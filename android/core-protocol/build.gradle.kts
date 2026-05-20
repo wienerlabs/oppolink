@@ -122,10 +122,9 @@ val uniffiBindgen by tasks.registering(Exec::class) {
     // the task's outputs don't end up shadowing the entire `src/main/kotlin`.
     outputs.dir(layout.projectDirectory.dir("src/main/kotlin/uniffi"))
 
-    doFirst {
-        uniffiOutDir.asFile.mkdirs()
-    }
-
+    // `src/main/kotlin` is created by AGP's convention before tasks run;
+    // UniFFI creates the `uniffi/<crate>/` subtree itself. No mkdirs needed,
+    // which keeps the task configuration-cache friendly.
     commandLine(
         "cargo", "run", "-p", rustCrateName, "--bin", "uniffi-bindgen", "--",
         "generate", "--library", hostLibFile.absolutePath,
