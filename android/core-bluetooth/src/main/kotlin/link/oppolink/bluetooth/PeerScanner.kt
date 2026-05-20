@@ -18,10 +18,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uniffi.oppolink_protocol.Capabilities
 import uniffi.oppolink_protocol.ManufacturerData
 import uniffi.oppolink_protocol.parseManufacturerData
 
@@ -52,18 +56,16 @@ internal class RealPeerScanner(
     private val scanner: BluetoothLeScanner?,
 ) : PeerScanner {
 
+    // Declared first so later property initializers can use it.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     private val _state = MutableStateFlow<PeerScanner.State>(PeerScanner.State.Idle)
     override val state: StateFlow<PeerScanner.State> = _state.asStateFlow()
 
-    private val _peers = MutableStateFlow<Map<String, Peer>>(emptyMap())
-    override val peers: StateFlow<List<Peer>> = MutableStateFlow<List<Peer>>(emptyList()).also {
-        // Mirror the keyed map into a sorted list, strongest RSSI first.
-        scope.launch {
-            _peers.collect { map ->
-                it.value = map.values.sortedByDescending { p -> p.rssi }
-            }
-        }
-    }.asStateFlow()
+    private val keyedPeers = MutableStateFlow<Map<String, Peer>>(emptyMap())
+    override val peers: StateFlow<List<Peer>> = keyedPeers
+        .map { map -> map.values.sortedByDescending { it.rssi } }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private val callback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -83,13 +85,13 @@ internal class RealPeerScanner(
         }
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var sweeperJob: Job? = null
 
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     override fun start() {
-        if (scanner == null) {
+        val activeScanner = scanner
+        if (activeScanner == null) {
             _state.value = PeerScanner.State.Error(
                 message = "Bluetooth LE scanning is not available on this device.",
                 nativeErrorCode = null,
@@ -115,7 +117,7 @@ internal class RealPeerScanner(
             .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
             .build()
 
-        scanner.startScan(filters, settings, callback)
+        activeScanner.startScan(filters, settings, callback)
         _state.value = PeerScanner.State.Scanning
         startSweeper()
     }
@@ -126,12 +128,12 @@ internal class RealPeerScanner(
         scanner?.let { runCatching { it.stopScan(callback) } }
         sweeperJob?.cancel()
         sweeperJob = null
-        _peers.value = emptyMap()
+        keyedPeers.value = emptyMap()
         _state.value = PeerScanner.State.Idle
     }
 
     private fun handleResult(result: ScanResult) {
-        val bdAddress = result.device.address ?: return
+        val bdAddress = result.device?.address ?: return
         val rawManuf = result.scanRecord?.getManufacturerSpecificData(OppoLinkUuid.MANUFACTURER_ID)
         val decoded: ManufacturerData? = rawManuf?.let { parseManufacturerData(it) }
         val peer = Peer(
@@ -141,7 +143,7 @@ internal class RealPeerScanner(
             capabilities = decoded?.capabilities ?: defaultCapabilities(),
             lastSeenAtMs = SystemClock.elapsedRealtime(),
         )
-        _peers.update { current -> current + (peer.bdAddress to peer) }
+        keyedPeers.update { current -> current + (peer.bdAddress to peer) }
     }
 
     private fun startSweeper() {
@@ -150,14 +152,14 @@ internal class RealPeerScanner(
             while (true) {
                 delay(SWEEP_INTERVAL_MS)
                 val now = SystemClock.elapsedRealtime()
-                _peers.update { current ->
+                keyedPeers.update { current ->
                     current.filterValues { now - it.lastSeenAtMs <= PEER_TIMEOUT_MS }
                 }
             }
         }
     }
 
-    private fun defaultCapabilities() = uniffi.oppolink_protocol.Capabilities(
+    private fun defaultCapabilities() = Capabilities(
         pcm16kMono = true,
         opus = true,
         aead = false,
@@ -171,6 +173,7 @@ internal class RealPeerScanner(
         else -> "Unknown scan error ($code)"
     }
 
+    /** Drop the long-lived sweeper scope; called by the DI graph on tear-down. */
     fun shutdown() {
         scope.cancel()
     }

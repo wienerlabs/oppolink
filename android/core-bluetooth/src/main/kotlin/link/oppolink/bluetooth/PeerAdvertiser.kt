@@ -66,7 +66,8 @@ internal class RealPeerAdvertiser(
     @SuppressLint("MissingPermission") // checked at call sites via BluetoothPermissions
     @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
     override fun start(nickname: String, capabilities: Capabilities) {
-        if (advertiser == null) {
+        val activeAdvertiser = advertiser
+        if (activeAdvertiser == null) {
             _state.value = PeerAdvertiser.State.Error(
                 message = "Bluetooth LE advertising is not available on this device.",
                 nativeErrorCode = null,
@@ -82,7 +83,7 @@ internal class RealPeerAdvertiser(
         }
 
         // Stop any in-flight advertisement before reconfiguring.
-        runCatching { advertiser.stopAdvertising(callback) }
+        runCatching { activeAdvertiser.stopAdvertising(callback) }
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
@@ -105,7 +106,7 @@ internal class RealPeerAdvertiser(
             .addManufacturerData(OppoLinkUuid.MANUFACTURER_ID, payload)
             .build()
 
-        advertiser.startAdvertising(settings, primary, scanResponse, callback)
+        activeAdvertiser.startAdvertising(settings, primary, scanResponse, callback)
     }
 
     @SuppressLint("MissingPermission")

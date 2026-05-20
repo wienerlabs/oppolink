@@ -51,12 +51,22 @@ dependencies {
 }
 
 // ─── Rust → JNI libs + UniFFI Kotlin bindings ────────────────────────────────
-// This task pair wires `rust/oppolink-protocol` into the Android build:
-//   1. cargoNdkBuild → cross-compiles the Rust crate for arm64-v8a + armeabi-v7a,
-//      drops .so files into src/main/jniLibs/<abi>/.
-//   2. uniffiBindgen → runs the `uniffi-bindgen` binary against the built .so to
-//      emit Kotlin bindings into build/generated/uniffi/.
-// Both tasks become dependencies of preBuild so a regular `assembleDebug` is enough.
+//
+// Three tasks compose the Rust → Android pipeline:
+//   1. hostBuild       — `cargo build --release -p oppolink-protocol` for the
+//                        host triple. Produces a .dylib/.so that UniFFI's
+//                        bindgen can introspect with the same architecture
+//                        it's running on.
+//   2. uniffiBindgen   — runs `cargo run --bin uniffi-bindgen` against the
+//                        host library and writes Kotlin into
+//                        build/generated/uniffi/.
+//   3. cargoNdkBuild   — `cargo ndk … build --release` for arm64-v8a +
+//                        armeabi-v7a. Writes the Android .so files into
+//                        src/main/jniLibs/<abi>/.
+//
+// Splitting host vs Android keeps the bindgen step cross-arch safe; UniFFI
+// 0.28's `--library` mode requires the binary to load the .so/.dylib at
+// runtime, which fails when the host and target architectures differ.
 
 val rustWorkspaceProp = providers.gradleProperty("oppolink.rustWorkspace")
 val rustWorkspaceDir = rustWorkspaceProp.map { rootProject.projectDir.resolve(it) }
@@ -73,9 +83,56 @@ val supportedAbis = listOf(
 val jniLibsRoot = layout.projectDirectory.dir("src/main/jniLibs")
 val uniffiOutDir = layout.buildDirectory.dir("generated/uniffi")
 
+/** Host-triple shared library used by `uniffi-bindgen` (and host-only tests). */
+val hostLibFile: java.io.File =
+    rustWorkspaceDir.get().resolve("target/release").let { releaseDir ->
+        val os = org.gradle.internal.os.OperatingSystem.current()
+        val name = when {
+            os.isMacOsX -> "lib$rustCrateLib.dylib"
+            os.isLinux -> "lib$rustCrateLib.so"
+            os.isWindows -> "$rustCrateLib.dll"
+            else -> error("Unsupported host OS for UniFFI bindgen: $os")
+        }
+        releaseDir.resolve(name)
+    }
+
+val hostBuild by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Build the host-target release library for UniFFI bindgen."
+
+    workingDir = rustWorkspaceDir.get()
+    inputs.dir(rustWorkspaceDir.get().resolve(rustCrateName).resolve("src"))
+    inputs.file(rustWorkspaceDir.get().resolve(rustCrateName).resolve("Cargo.toml"))
+    inputs.file(rustWorkspaceDir.get().resolve("Cargo.toml"))
+    outputs.file(hostLibFile)
+
+    commandLine("cargo", "build", "--release", "-p", rustCrateName)
+}
+
+val uniffiBindgen by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Generate Kotlin bindings from the host $rustCrateName library."
+    dependsOn(hostBuild)
+
+    workingDir = rustWorkspaceDir.get()
+    inputs.file(hostLibFile)
+    outputs.dir(uniffiOutDir)
+
+    commandLine(
+        "cargo", "run", "-p", rustCrateName, "--bin", "uniffi-bindgen", "--",
+        "generate", "--library", hostLibFile.absolutePath,
+        "--language", "kotlin",
+        "--out-dir", uniffiOutDir.get().asFile.absolutePath,
+    )
+}
+
 val cargoNdkBuild by tasks.registering(Exec::class) {
     group = "rust"
     description = "Cross-compile $rustCrateName for Android ABIs via cargo-ndk."
+
+    // Same Cargo target/ directory as `hostBuild`; serialize to avoid lockfile
+    // contention without forcing a real dependency edge.
+    mustRunAfter(hostBuild)
 
     workingDir = rustWorkspaceDir.get()
     inputs.dir(rustWorkspaceDir.get().resolve(rustCrateName).resolve("src"))
@@ -90,26 +147,8 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     commandLine(cmd)
 }
 
-val uniffiBindgen by tasks.registering(Exec::class) {
-    group = "rust"
-    description = "Generate Kotlin bindings from the compiled $rustCrateName library."
-    dependsOn(cargoNdkBuild)
-
-    workingDir = rustWorkspaceDir.get()
-    val anyAbi = supportedAbis.first().abi
-    val libFile = jniLibsRoot.dir(anyAbi).file("lib$rustCrateLib.so").asFile
-    inputs.file(libFile)
-    outputs.dir(uniffiOutDir)
-
-    commandLine(
-        "cargo", "run", "-p", rustCrateName, "--bin", "uniffi-bindgen", "--",
-        "generate", "--library", libFile.absolutePath,
-        "--language", "kotlin",
-        "--out-dir", uniffiOutDir.get().asFile.absolutePath,
-    )
-}
-
-tasks.named("preBuild").configure { dependsOn(uniffiBindgen) }
+// preBuild fires before AGP's variant tasks (jniLibs packaging, etc.).
+tasks.named("preBuild").configure { dependsOn(cargoNdkBuild, uniffiBindgen) }
 
 // preBuild only fires before the Android variant tasks; Kotlin's compileXxxKotlin
 // is wired separately and can race the bindgen. Bind the Kotlin compile tasks
