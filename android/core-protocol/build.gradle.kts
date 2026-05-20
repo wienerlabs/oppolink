@@ -123,14 +123,14 @@ val uniffiBindgen by tasks.registering(Exec::class) {
     outputs.dir(layout.projectDirectory.dir("src/main/kotlin/uniffi"))
 
     doFirst {
-        uniffiOutDir.get().asFile.mkdirs()
+        uniffiOutDir.asFile.mkdirs()
     }
 
     commandLine(
         "cargo", "run", "-p", rustCrateName, "--bin", "uniffi-bindgen", "--",
         "generate", "--library", hostLibFile.absolutePath,
         "--language", "kotlin",
-        "--out-dir", uniffiOutDir.get().asFile.absolutePath,
+        "--out-dir", uniffiOutDir.asFile.absolutePath,
     )
 }
 
