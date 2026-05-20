@@ -1,0 +1,29 @@
+[package]
+name = "oppolink-protocol"
+description = "Wire format, handshake state machine, AEAD layer for OppoLink."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+# - cdylib: produces the .so consumed by Android via JNI.
+# - staticlib: useful for future iOS / desktop hosts.
+# - rlib: lets sibling crates depend on this one inside the workspace.
+crate-type = ["cdylib", "staticlib", "rlib"]
+name = "oppolink_protocol"
+
+# A tiny binary so the Gradle `uniffiBindgen` task can do:
+#   cargo run -p oppolink-protocol --bin uniffi-bindgen -- generate ...
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[dependencies]
+uniffi = { workspace = true, features = ["cli"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+uniffi = { workspace = true, features = ["bindgen-tests"] }

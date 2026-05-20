@@ -1,0 +1,15 @@
+[package]
+name = "oppolink-codec"
+description = "libopus bindings + 20 ms VoIP framing for OppoLink."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+thiserror = { workspace = true }

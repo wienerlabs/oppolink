@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Conserve runner minutes by cancelling superseded runs on the same branch.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── Rust workspace: format, lint, unit tests ──────────────────────────────
+  rust:
+    name: Rust (workspace)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: aarch64-linux-android, armv7-linux-androideabi
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+  # ─── UniFFI bindgen smoke: build host dylib + emit Kotlin bindings ─────────
+  uniffi-bindgen:
+    name: UniFFI bindgen smoke
+    runs-on: ubuntu-24.04
+    needs: rust
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+
+      - name: Build host dylib
+        run: cargo build -p oppolink-protocol --release
+
+      - name: Generate Kotlin bindings
+        run: |
+          cargo run -p oppolink-protocol --bin uniffi-bindgen -- \
+            generate --library target/release/liboppolink_protocol.so \
+            --language kotlin --out-dir target/uniffi-out
+
+      - name: Verify generated Kotlin contains greet()
+        run: |
+          test -f target/uniffi-out/uniffi/oppolink_protocol/oppolink_protocol.kt
+          grep -q 'fun `greet`' target/uniffi-out/uniffi/oppolink_protocol/oppolink_protocol.kt
+
+  # ─── Android build: requires the Rust workspace to cross-compile first ─────
+  android:
+    name: Android (assembleDebug)
+    runs-on: ubuntu-24.04
+    needs: rust
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: true
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate Gradle wrapper (first-run)
+        run: |
+          if [ ! -x ./gradlew ]; then
+            gradle wrapper --gradle-version 8.10.2
+          fi
+
+      - name: assembleDebug
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: oppolink-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 7

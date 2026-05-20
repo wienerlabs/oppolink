@@ -1,0 +1,15 @@
+[package]
+name = "oppolink-jitter"
+description = "Adaptive jitter buffer + PLC orchestration for OppoLink."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+thiserror = { workspace = true }

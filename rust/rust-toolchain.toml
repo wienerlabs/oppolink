@@ -1,0 +1,5 @@
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-linux-android", "armv7-linux-androideabi"]
+profile = "minimal"

@@ -1,0 +1,69 @@
+# ─── Android / Gradle ─────────────────────────────────────────────────────────
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+android/.gradle/
+android/build/
+android/app/build/
+android/*/build/
+android/.kotlin/
+android/local.properties
+
+# Keystores — never commit
+*.jks
+*.keystore
+keystore.properties
+
+# Generated UniFFI bindings (regenerated on every build)
+android/core-protocol/src/main/kotlin/uniffi/
+
+# Generated JNI libs (cargo-ndk output)
+android/*/src/main/jniLibs/
+
+# Android Profiler
+*.hprof
+
+# Lint
+lint-results*.html
+lint-results*.xml
+
+# ─── Rust / Cargo ────────────────────────────────────────────────────────────
+rust/target/
+**/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# ─── JetBrains ──────────────────────────────────────────────────────────────
+*.ipr
+*.iws
+out/
+
+# ─── VS Code ────────────────────────────────────────────────────────────────
+.vscode/
+*.code-workspace
+
+# ─── OS junk ────────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ─── Secrets / env ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+secrets/
+
+# ─── CI artifacts (kept locally during development) ─────────────────────────
+*.log
