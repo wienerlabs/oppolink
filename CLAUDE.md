@@ -51,7 +51,33 @@ The `:core-protocol:preBuild` task depends on both steps above. See `android/cor
 5. Commit with a Conventional Commit subject. Open PR. Squash on merge.
 
 ## Things that have burned us before (anti-corpus)
-*(Empty for now — fill as we hit them.)*
+
+- **Never set `[profile.release].strip = "symbols"` in `rust/Cargo.toml`.** Linux
+  ELF strip removes the UniFFI metadata sections together with the regular
+  symbol table; `uniffi-bindgen generate --library …release/lib*.so` then
+  runs to completion, prints nothing, writes nothing — the Kotlin source
+  set ends up empty and `:core-bluetooth:compileDebugKotlin` fails with
+  `Unresolved reference 'uniffi'`. cargo-ndk strips the Android-shipped .so
+  on its own pass.
+- **Generated Kotlin lives in `src/main/kotlin/`, not `build/generated/…`.**
+  Both `android.sourceSets["main"].kotlin.srcDir(…)` and the AGP variant API
+  `androidComponents.onVariants.sources.kotlin.addStaticSourceDirectory(…)`
+  proved unreliable in this AGP/KGP combo (compileXxxKotlin stayed NO-SOURCE).
+  Bindgen now writes straight into `src/main/kotlin/uniffi/<crate>/…`, a
+  `.gitkeep` keeps the directory alive, and `.gitignore` excludes the
+  `uniffi/` subtree so the working copy stays clean.
+- **UniFFI `--library` mode needs the host triple.** `cargo build --release`
+  (host) feeds `uniffi-bindgen`; `cargo ndk … build --release` cross-compiles
+  separately and lands in `src/main/jniLibs/<abi>/`. The two tasks share
+  `target/`, so `cargoNdkBuild.mustRunAfter(hostBuild)` to avoid Cargo lock
+  contention.
+- **Configuration cache rejects `doFirst { … }` blocks that capture
+  script-level `Directory` references.** AGP / UniFFI create needed subtrees
+  on their own; keep `Exec` tasks lambda-free.
+- **`compile*Kotlin` does not honor `preBuild` dependencies.** Wire
+  generated-source producers (UniFFI bindgen, codegen, etc.) into every
+  `compile*Kotlin` task via an `afterEvaluate { tasks.matching {…}.configureEach { dependsOn(…) } }`
+  block in addition to the `preBuild` hook.
 
 ## Useful pointers
 - Android L2CAP CoC docs: <https://developer.android.com/develop/connectivity/bluetooth/ble/connect-gatt-server#l2cap-channels>
