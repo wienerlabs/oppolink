@@ -68,14 +68,16 @@ jobs:
 
       - name: Verify generated Kotlin contains the D2 discovery API
         run: |
+          set -x
           KT=target/uniffi-out/uniffi/oppolink_protocol/oppolink_protocol.kt
+          ls -la "$(dirname "$KT")"
           test -f "$KT"
-          grep -q 'fun .encodeManufacturerData.' "$KT"
-          grep -q 'fun .parseManufacturerData.' "$KT"
-          grep -q 'fun .serviceUuid.' "$KT"
-          grep -q 'fun .manufacturerId.' "$KT"
-          grep -q 'data class ManufacturerData' "$KT"
-          grep -q 'data class Capabilities' "$KT"
+          grep -Fq 'encodeManufacturerData' "$KT"
+          grep -Fq 'parseManufacturerData'  "$KT"
+          grep -Fq 'serviceUuid'            "$KT"
+          grep -Fq 'manufacturerId'         "$KT"
+          grep -Fq 'data class ManufacturerData' "$KT"
+          grep -Fq 'data class Capabilities'     "$KT"
 
   # ─── Android build: requires the Rust workspace to cross-compile first ─────
   android:

@@ -25,15 +25,23 @@ android {
     }
     kotlinOptions { jvmTarget = "21" }
 
-    // UniFFI-generated Kotlin lands in build/generated/uniffi; the cargoNdkBuild task
-    // writes .so files into src/main/jniLibs/<abi>/.
-    // The Kotlin srcDir must resolve to a concrete File so the Kotlin compile
-    // task picks up the generated bindings even before they exist on disk.
+    // jniLibs are the cargoNdkBuild output — added via the legacy source-set
+    // API because AGP still honors `jniLibs.srcDir` there.
     sourceSets {
         named("main") {
-            kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi").get().asFile)
             jniLibs.srcDir("src/main/jniLibs")
         }
+    }
+}
+
+// Generated Kotlin must be registered via the AGP variant API on modern AGP;
+// `android.sourceSets["main"].kotlin.srcDir(...)` is silently ignored for
+// Kotlin compilation and leaves the task at NO-SOURCE.
+androidComponents {
+    onVariants { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("generated/uniffi").get().asFile.absolutePath,
+        )
     }
 }
 
