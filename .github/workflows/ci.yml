@@ -66,10 +66,16 @@ jobs:
             generate --library target/release/liboppolink_protocol.so \
             --language kotlin --out-dir target/uniffi-out
 
-      - name: Verify generated Kotlin contains greet()
+      - name: Verify generated Kotlin contains the D2 discovery API
         run: |
-          test -f target/uniffi-out/uniffi/oppolink_protocol/oppolink_protocol.kt
-          grep -q 'fun `greet`' target/uniffi-out/uniffi/oppolink_protocol/oppolink_protocol.kt
+          KT=target/uniffi-out/uniffi/oppolink_protocol/oppolink_protocol.kt
+          test -f "$KT"
+          grep -q 'fun .encodeManufacturerData.' "$KT"
+          grep -q 'fun .parseManufacturerData.' "$KT"
+          grep -q 'fun .serviceUuid.' "$KT"
+          grep -q 'fun .manufacturerId.' "$KT"
+          grep -q 'data class ManufacturerData' "$KT"
+          grep -q 'data class Capabilities' "$KT"
 
   # ─── Android build: requires the Rust workspace to cross-compile first ─────
   android:

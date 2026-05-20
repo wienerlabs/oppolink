@@ -27,9 +27,11 @@ android {
 
     // UniFFI-generated Kotlin lands in build/generated/uniffi; the cargoNdkBuild task
     // writes .so files into src/main/jniLibs/<abi>/.
+    // The Kotlin srcDir must resolve to a concrete File so the Kotlin compile
+    // task picks up the generated bindings even before they exist on disk.
     sourceSets {
         named("main") {
-            kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi"))
+            kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi").get().asFile)
             jniLibs.srcDir("src/main/jniLibs")
         }
     }
@@ -108,3 +110,11 @@ val uniffiBindgen by tasks.registering(Exec::class) {
 }
 
 tasks.named("preBuild").configure { dependsOn(uniffiBindgen) }
+
+// preBuild only fires before the Android variant tasks; Kotlin's compileXxxKotlin
+// is wired separately and can race the bindgen. Bind the Kotlin compile tasks
+// explicitly to guarantee generated sources exist before they are read.
+afterEvaluate {
+    tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }
+        .configureEach { dependsOn(uniffiBindgen) }
+}
