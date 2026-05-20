@@ -1,20 +1,18 @@
 package link.oppolink.bluetooth
 
+import uniffi.oppolink_protocol.Capabilities
+
 /**
- * A discovered OppoLink peer, surfaced by the BLE scanner.
+ * A nearby OppoLink peer surfaced by [PeerScanner]. Identity is the BLE
+ * address — the nickname is advisory and may be the device model.
  *
- * Stubbed in Sprint 1 D1. Replaced by a real implementation backed by
- * [android.bluetooth.le.ScanResult] in D2.
+ * `lastSeenAtMs` is wall-clock time of the most recent advertisement; the
+ * scanner uses it to time out stale peers from the visible list.
  */
 data class Peer(
-    val nickname: String,
     val bdAddress: String,
+    val nickname: String,
     val rssi: Int,
+    val capabilities: Capabilities,
+    val lastSeenAtMs: Long,
 )
-
-/** Discovery API. Real implementation arrives in Sprint 1 D2. */
-interface PeerScanner {
-    fun start()
-    fun stop()
-    fun observePeers(): kotlinx.coroutines.flow.Flow<List<Peer>>
-}

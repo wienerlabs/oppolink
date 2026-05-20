@@ -1,12 +1,38 @@
 # `:core-bluetooth`
 
-BLE transport layer: GATT advertising, scanning, characteristic exchange, and
+BLE transport layer: advertising, scanning, and (Sprint 1 D3+) GATT +
 L2CAP CoC socket lifecycle.
 
 ## Boundary
-- **In**: `:core-protocol` for typed handshake messages and wire format.
-- **Out**: an interface that the `:app` layer drives — start scanning, connect
-  to a peer, open an L2CAP channel, hand the resulting socket to `:core-audio`.
+- **In**: `:core-protocol` for typed wire-format manufacturer-data and the
+  service UUID (Rust is the source of truth — Kotlin must not parse the
+  payload by hand).
+- **Out**: `PeerScanner` and `PeerAdvertiser` interfaces that the `:app`
+  layer drives; `Peer` data class for the UI.
 
-## Sprint 1 scope
-Stubs only. Real implementation lands in Sprint 1 D2–D4.
+## Sprint 1 D2 scope (shipped)
+- `OppoLinkUuid` — service UUID + manufacturer ID, sourced from Rust via
+  UniFFI so any wire-format change in Rust propagates automatically.
+- `BluetoothPermissions` — single source of truth for the runtime permission
+  set (handles the API 31 split between `BLUETOOTH_SCAN/CONNECT/ADVERTISE`
+  and the legacy API 29–30 set).
+- `PeerScanner` — `BluetoothLeScanner` wrapper. Filters by service UUID,
+  parses manufacturer-data via Rust, exposes `StateFlow<List<Peer>>` with
+  per-peer staleness eviction.
+- `PeerAdvertiser` — `BluetoothLeAdvertiser` wrapper. Two-packet advertise:
+  primary carries the service UUID, scan response carries the
+  manufacturer-data payload (nickname + capability bitmap).
+- `BluetoothModule` — Hilt singleton providers for `BluetoothManager`,
+  `PeerScanner`, and `PeerAdvertiser`.
+
+## Sprint 1 D3+ (next)
+- GATT server / client wiring on top of the discovered peer.
+- L2CAP CoC socket open/accept.
+- Connection state machine (idle → connecting → connected → torn down).
+
+## Hard rules
+- Never parse manufacturer-data layout in Kotlin. Always call
+  `parseManufacturerData(bytes)` through UniFFI.
+- The advertiser MUST be a Singleton: the Android BluetoothLeAdvertiser is
+  a process-wide handle and recreating it after a Bluetooth toggle leaks
+  callbacks on some OEMs.

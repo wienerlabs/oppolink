@@ -6,12 +6,58 @@ byte bump.
 
 ## Identifiers
 
-- **Service UUID prefix**: `0xOPPL` (full 128-bit UUID to be assigned before
-  Sprint 1 D2). Used in BLE advertising and GATT service discovery.
-- **Handshake characteristic**: `0xOPPL0001`.
-- **Magic**: ASCII `"OPL1"` (4 bytes, big-endian on the wire).
+- **Service UUID** (locked in Sprint 1 D2):
+  `4F50504C-0001-4F50-504C-000000000001`. ASCII "OPPL" appears on word
+  boundaries so the UUID is easy to spot in scan dumps.
+- **Handshake characteristic** (Sprint 1 D3):
+  `4F50504C-0001-4F50-504C-000000000002` — the same base UUID with the suffix
+  bumped to `…0002`.
+- **Manufacturer ID**: `0xFFFF` (Bluetooth SIG "test" range). Replaced with a
+  real SIG-assigned ID before the public v1 release.
+- **Wire magic**: ASCII `"OP"` (2 bytes) inside the manufacturer-specific data
+  field, disambiguating OppoLink advertisements from any other app that also
+  happens to use `0xFFFF`.
 
-## Handshake (over GATT characteristic `0xOPPL0001`)
+## Discovery — BLE advertising (Sprint 1 D2, locked)
+
+Two packets per advertise cycle:
+
+**Primary advertise** (≤31 byte budget) carries only the 128-bit service UUID:
+
+```
+┌───────────────────────────────────────────────┐
+│ Service UUID: 4F50504C-0001-4F50-504C-…       │  (16 bytes + flags overhead)
+└───────────────────────────────────────────────┘
+```
+
+**Scan response** carries the OppoLink manufacturer-specific data:
+
+```
+┌───────────────────────────────────────────────┐
+│ Manuf ID: 0xFFFF  (LE, 2 bytes)               │
+│ magic:    "OP"     (2 bytes)                  │
+│ version:  u8       (PROTOCOL_VERSION = 0x01)  │
+│ caps:     u32 LE   (capability bitmap)        │
+│ nick_len: u8       (0..=16)                   │
+│ nick:     [u8; nick_len]   UTF-8              │
+└───────────────────────────────────────────────┘
+```
+
+Capability bitmap bits:
+
+| Bit | Name             | Meaning                                       |
+| --- | ---------------- | --------------------------------------------- |
+| 0   | `PCM_16K_MONO`   | 16 kHz mono PCM capture/playback (v1: always) |
+| 1   | `OPUS`           | libopus encode/decode (v1: always)            |
+| 2   | `AEAD`           | ChaCha20-Poly1305 ready (Sprint 4 D13)        |
+| 3..31 | reserved       | must be 0                                     |
+
+Encode/decode is implemented in `rust/oppolink-protocol/src/manufacturer.rs`
+and exposed to Kotlin via UniFFI as `encodeManufacturerData` /
+`parseManufacturerData`. Kotlin must not parse the layout by hand — Rust is
+the source of truth.
+
+## Handshake (Sprint 1 D3, over GATT characteristic `…0002`)
 
 ```
 ┌─────────────────────────────────────────────────────┐
