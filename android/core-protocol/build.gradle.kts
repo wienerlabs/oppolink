@@ -34,17 +34,6 @@ android {
     }
 }
 
-// Generated Kotlin must be registered via the AGP variant API on modern AGP;
-// `android.sourceSets["main"].kotlin.srcDir(...)` is silently ignored for
-// Kotlin compilation and leaves the task at NO-SOURCE.
-androidComponents {
-    onVariants { variant ->
-        variant.sources.kotlin?.addStaticSourceDirectory(
-            layout.buildDirectory.dir("generated/uniffi").get().asFile.absolutePath,
-        )
-    }
-}
-
 dependencies {
     // JNA is required at runtime by UniFFI's Kotlin runtime. The @aar variant ships
     // the bundled JNI shared library that JNA needs on Android.
@@ -89,7 +78,12 @@ val supportedAbis = listOf(
 )
 
 val jniLibsRoot = layout.projectDirectory.dir("src/main/jniLibs")
-val uniffiOutDir = layout.buildDirectory.dir("generated/uniffi")
+
+// Bindgen writes Kotlin straight into the standard Kotlin source root so AGP's
+// default source-set picks it up — no addGeneratedSourceDirectory hoops, no
+// NO-SOURCE Kotlin task. `.gitignore` already excludes the resulting
+// `src/main/kotlin/uniffi/` tree so the working copy stays clean.
+val uniffiOutDir = layout.projectDirectory.dir("src/main/kotlin")
 
 /** Host-triple shared library used by `uniffi-bindgen` (and host-only tests). */
 val hostLibFile: java.io.File =
@@ -124,7 +118,13 @@ val uniffiBindgen by tasks.registering(Exec::class) {
 
     workingDir = rustWorkspaceDir.get()
     inputs.file(hostLibFile)
-    outputs.dir(uniffiOutDir)
+    // Restrict the declared output to the subtree UniFFI actually writes, so
+    // the task's outputs don't end up shadowing the entire `src/main/kotlin`.
+    outputs.dir(layout.projectDirectory.dir("src/main/kotlin/uniffi"))
+
+    doFirst {
+        uniffiOutDir.get().asFile.mkdirs()
+    }
 
     commandLine(
         "cargo", "run", "-p", rustCrateName, "--bin", "uniffi-bindgen", "--",

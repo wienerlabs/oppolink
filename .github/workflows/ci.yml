@@ -62,9 +62,13 @@ jobs:
 
       - name: Generate Kotlin bindings
         run: |
+          set -x
+          mkdir -p target/uniffi-out
           cargo run -p oppolink-protocol --bin uniffi-bindgen -- \
             generate --library target/release/liboppolink_protocol.so \
             --language kotlin --out-dir target/uniffi-out
+          echo "--- output tree ---"
+          find target/uniffi-out -type f | head -20
 
       - name: Verify generated Kotlin contains the D2 discovery API
         run: |
