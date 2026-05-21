@@ -1,0 +1,277 @@
+# OppoLink Task List
+
+Persistent roadmap for any Claude Code session picking the project up. Holds
+**what to do next**, **what is already locked**, **what we deliberately said
+no to**, and **open questions** that have to be answered before v1. Update
+this file at the end of every deliverable.
+
+Last updated: 2026-05-21 after Sprint 1 D3 shipped (commit `12f5622`).
+
+---
+
+## Status snapshot
+
+| # | Deliverable | Commit | CI | Notes |
+| --- | --- | --- | --- | --- |
+| D1 | Multi-module skeleton + UniFFI hello_world | `dfd7c5c` | green | scaffold only |
+| D2 | BLE discovery (advertise + scan + UI) | `f41ae3c` | green | required 6 CI fixes — see "Burns" below |
+| D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
+| D4 | L2CAP echo test, RTT <30 ms median | _pending_ | — | next in queue |
+
+---
+
+## Sprint 1 — Foundations (Week 1)
+
+### D4 — L2CAP echo test (next)
+
+Goal: open the L2CAP CoC socket on top of the PSM that D3 already exchanges,
+send 1 KB packets back and forth, measure round-trip latency. Target p50
+<30 ms on LE 2M PHY.
+
+**Work units**
+1. **Rust** (`oppolink-protocol`): RTT-measurement helpers in a new `echo`
+   module — `EchoStats { samples_ms: Vec<f32>, p50_ms: f32, p95_ms: f32 }`
+   plus a `record_sample(now_ms: u64) -> EchoStats` reducer. Echo payload
+   shape is just `[seq: u32 BE | payload: [u8; 1020]]` — keep it boring.
+2. **Kotlin `:core-bluetooth`**:
+   - `L2capChannel` wrapper around `BluetoothSocket` (input + output stream,
+     `connect()` on the client side, `accept()` on the server side from the
+     existing `GattServerHost.serverSocket`).
+   - Wire `GattServerHost` so the listening `BluetoothServerSocket` survives
+     `stopPassiveServer` while a peer connection is in flight, then closes.
+     The simplest cut: `GattServerHost` exposes `acceptL2cap(timeout: Long)`.
+   - Extend `PeerConnector` with `runEchoTest(peer, samples = 10): EchoStats`
+     that opens the channel, runs the loop on a dedicated `Thread`
+     (`THREAD_PRIORITY_URGENT_AUDIO` — practice the discipline before audio).
+3. **Kotlin `:app`**:
+   - `ConnectionScreen` gains an "Echo" button visible after PsmExchanged.
+   - New `EchoResultCard` Composable with p50 / p95 / packet-loss numbers.
+   - `ConnectionViewModel.runEchoTest()` returns a Flow-of-progress so the
+     UI can show "5 / 10 samples".
+4. **Tests**:
+   - Rust: stats reducer (median + p95 on hand-rolled fixtures).
+   - Android instrumented: skip (no L2CAP on emulator).
+5. **Docs**: update `PROTOCOL.md` echo packet shape + result table in
+   `COLOROS_COMPAT.md` ("Tier 1 Reno 11 — p50 = …, p95 = …").
+
+**Decisions to lock before writing code**
+- Echo packet size: 1024 byte (spec). Carry `u32 seq` + 1020-byte body.
+- Sample count: 10 round trips. Take p50 + p95.
+- Threading: blocking I/O on a dedicated `Thread`; **not** coroutines.
+  Coroutine dispatcher jitter is unacceptable for the audio-path
+  rehearsal, and `BluetoothSocket` is blocking by design.
+- Server-side `accept` timeout: 10 s; UI surfaces a `Failed("peer never
+  opened the L2CAP socket")` after that.
+- Tear-down: client side closes its socket after the final sample; server
+  side returns from `accept` and closes its own.
+
+**Risks**
+- Android emulator does not expose BLE L2CAP CoC — testing requires two
+  real phones. Bake in `Log.i` lines that surface socket open / first
+  byte / close events so adb-pulled logs are diagnostic.
+- `setPreferredPhy(PHY_LE_2M, PHY_LE_2M, PHY_OPTION_NO_PREFERRED)` is
+  best-effort; older radios silently fall back. Read the actual PHY back
+  via `BluetoothGatt.readPhy()` and surface it in the UI so a failed RTT
+  budget can be diagnosed instantly.
+- ColorOS may throttle the L2CAP socket on screen-off. D4 only runs
+  foreground; D9 (foreground service) and D10 (battery whitelist wizard)
+  handle background survival.
+
+### Sprint 1 close-out check
+After D4 lands and CI is green, refresh `COLOROS_COMPAT.md` with real
+RTT numbers from at least one Tier 1 device (Reno 11 / Find X7). If the
+p50 budget is missed, log it as a Sprint 2 risk before starting D5.
+
+---
+
+## Sprint 2 — Audio MVP (Week 2)
+
+### D5 — One-way audio
+- Pipeline: `AudioRecord (VOICE_COMMUNICATION, 16 kHz mono, 20 ms)` → Opus
+  encode (`OPUS_APPLICATION_VOIP`, 24 kbps, complexity 5, FEC on, DTX off
+  for v1) → framing header `[seq:u16 | ts:u16]` → L2CAP TX. Receiver path
+  mirrors.
+- Move all Opus FFI into `rust/oppolink-codec`. UniFFI export `Encoder` +
+  `Decoder` opaque types. Pre-allocate scratch buffers in `prepare()`.
+- New module-level rule: **no allocations on the 20 ms tick** once
+  `call.start()` returns. Comment every allocation that does happen with
+  why it's safe (cold-start only).
+
+### D6 — Full-duplex
+- Capture / TX / RX / playback all on dedicated threads. Verify with
+  Systrace that the 20 ms tick has zero GC pauses for a 60-second call.
+- Wire AEC / NS / AGC via the standard Android effect APIs (`isAvailable`
+  guards first).
+
+### D7 — AEC validation on Reno 11 / Find X7
+- Speaker-phone test in a small quiet room, mic 0.5 m / 1 m / 2 m.
+- Tolerable howling threshold: no echo coupling at 0.5 m at 70% volume.
+- Failure mode: fall back to mic + earpiece (no speaker) and surface a
+  banner in the UI explaining the constraint.
+
+---
+
+## Sprint 3 — ColorOS Hardening (Week 3)
+
+### D8 — Jitter buffer + PLC
+- Implementation in `rust/oppolink-jitter`. Adaptive depth between
+  [2, 5] frames (40–100 ms). Opus PLC via `opus_decode(NULL, …)` when
+  the buffer underruns.
+- Synthetic loss test: drop 0 %, 1 %, 3 %, 5 % of frames and measure
+  MOS-LQO with PESQ.
+
+### D9 — Foreground service
+- `CallForegroundService` extends `Service`. Notification channel
+  "OppoLink — call active 02:14" with mute and end-call actions.
+- `FOREGROUND_SERVICE_MICROPHONE` permission already declared in D1.
+- Migrate audio pipeline ownership from the Activity to the service so
+  the call survives screen-off.
+
+### D10 — ColorOS battery whitelist wizard
+- First-run flow in `:coloros-compat`. Detect ColorOS version
+  (`Build.DISPLAY` + `SystemProperties.get("ro.build.version.opporom")`).
+- Per-version intent table → Startup Manager, Battery Optimization,
+  Floating Window, Auto-Launch. Wrap every `startActivity` with
+  `try/catch (ActivityNotFoundException)` + generic settings fallback.
+- Ship version-tagged screenshots so the wizard text matches the actual
+  UI the user sees (ColorOS 13, 14, 15).
+
+### D11 — Reconnect on drop
+- If the L2CAP socket breaks during a call, attempt a single reconnect
+  on the cached PSM within 5 s before terminating. After that, drop to
+  Idle and surface "Call dropped — peer out of range?".
+
+---
+
+## Sprint 4 — Release (Week 4)
+
+### D12 — Push-to-talk mode
+- Settings toggle. When PTT is on, `AudioRecord` stays prepared but only
+  emits frames while the button is held. Saves battery on quiet calls.
+
+### D13 — Encryption (Curve25519 + ChaCha20-Poly1305)
+- ECDH key agreement at handshake. Real bytes go into the pubkey field
+  that v1 has been zero-padding all along — wire-format-stable upgrade.
+- AEAD on every audio frame; nonce = 12-byte session nonce XOR seq.
+- **Bring `decide_role` back into the picture here.** Both peers now
+  exchange their pubkeys on an open L2CAP socket and can include their
+  identifier in the payload, so the deterministic tie-break (lower BD_ADDR
+  / lower pubkey hash) becomes implementable.
+- Short authentication string (SAS) verification UX: show 6 emoji on
+  both screens; user taps "matches" to accept.
+
+### D14 — Battery profiling
+- Reno 11 active-call drain budget: <5 %/hour.
+- Probe `BatteryManager` every 60 s during a 30-min test call.
+- Mitigations if missed: drop Opus complexity to 3, drop BLE PHY back
+  to LE 1M, reduce TX power.
+
+### D15 — Signed APK + GitHub release + F-Droid manifest
+- Local keystore stored outside the repo. CI release workflow built on
+  top of the existing debug pipeline.
+- F-Droid manifest at `metadata/link.oppolink.yml`.
+- Play Store: deferred pending trademark counsel (see Open Questions).
+
+---
+
+## Locked decisions (immutable without a `PROTOCOL_VERSION` bump)
+
+| Surface | Value | Source of truth |
+| --- | --- | --- |
+| Service UUID | `4F50504C-0001-4F50-504C-000000000001` | `rust/oppolink-protocol/src/lib.rs::SERVICE_UUID` |
+| Handshake characteristic UUID | `4F50504C-0001-4F50-504C-000000000002` | `handshake_char_uuid()` |
+| Manufacturer ID | `0xFFFF` (test) | `manufacturer::MANUFACTURER_ID` |
+| Manuf-data magic | `"OP"` (2 bytes) | `manufacturer::WIRE_MAGIC` |
+| Handshake magic | `"OPL1"` (4 bytes) | `handshake::HANDSHAKE_MAGIC` |
+| Protocol version | `0x01` | `manufacturer::PROTOCOL_VERSION` + `handshake::HANDSHAKE_VERSION` |
+| Max nickname | 16 byte UTF-8, truncated at char boundary | `MAX_NICKNAME_BYTES` |
+| Capabilities bitmap | bit 0 = PCM_16K_MONO, 1 = OPUS, 2 = AEAD | `manufacturer::Capabilities` |
+| Pubkey length | 32 byte (Curve25519; zeros until D13) | `handshake::PUBKEY_LEN` |
+| PSM direction | server emits its allocated PSM, client emits 0 | `HandshakeMessage::psm` |
+| Role assignment | UI-driven; tapper = client | docs/PROTOCOL.md |
+| Android namespace | `link.oppolink` (debug suffix `.debug`) | `android/app/build.gradle.kts` |
+| Min / target / compile SDK | 29 / 35 / 35 | `android/gradle/libs.versions.toml` |
+| Build tool versions | Kotlin 2.1.0, AGP 8.7.3, Gradle 8.10.2, Compose BOM 2024.12.01, Hilt 2.52, JNA 5.15.0@aar | `libs.versions.toml` |
+| UniFFI | 0.28 proc-macros, **no UDL files** | `rust/oppolink-protocol/Cargo.toml` |
+| Rust release profile | `strip = OFF` (Linux ELF strip kills UniFFI metadata) | `rust/Cargo.toml` |
+| Generated Kotlin path | `:core-protocol/src/main/kotlin/uniffi/<crate>/<crate>.kt` | bindgen `--out-dir` |
+
+---
+
+## Things we deliberately said no to
+
+- **No `rust-android-gradle` plugin.** Two `Exec` tasks (`hostBuild`,
+  `cargoNdkBuild`, `uniffiBindgen`) give us explicit input/output, cache
+  keys we control, and a debuggable command line. Reconsider if the plugin
+  ever gets first-party support from JetBrains or Google.
+- **No coroutines on the audio hot path.** The 20 ms tick budget can't
+  absorb dispatcher scheduling jitter. Coroutines are fine for GATT,
+  control plane, and UI.
+- **No mock for the audio path in tests.** Audio correctness only matters
+  on real hardware; a passing mock test would mislead more than it would
+  protect. Rust codec / framing / jitter logic gets unit tests in isolation.
+- **No BD_ADDR-based role assignment in v1.** Android 8+ returns
+  `02:00:00:00:00:00` for `BluetoothAdapter.getAddress()`. We considered
+  embedding a random session ID in the manufacturer data, but it adds wire
+  surface that's only useful for one corner case (both peers simultaneously
+  tap each other within 100 ms). Sprint 4 D13 handles it via the handshake.
+- **No Navigation library.** Three screens (PermissionGate, Discovery,
+  Connection) are small enough that a hand-rolled `selectedPeer: Peer?`
+  state machine reads cleaner than `androidx.navigation`.
+- **No iOS port in v1.** CoreBluetooth's L2CAP CoC API exists, but the
+  cross-platform handshake QA budget is too large for v1. Rust core is
+  written portably so the door stays open.
+
+---
+
+## Burns (cross-link: `CLAUDE.md` for terse summaries, here for context)
+
+The longest debugging session of the project — Sprint 1 D2 took six CI fix
+commits before going green. Future-Claude: if you hit any of the symptoms
+below, jump straight to the cited fix.
+
+| Symptom | Root cause | Fix |
+| --- | --- | --- |
+| `Unresolved reference 'uniffi'` in `:core-bluetooth` Kotlin compile, but `:core-protocol` task graph looks fine | UniFFI bindgen runs but writes zero bytes. Library was built with `[profile.release] strip = "symbols"`, which on **Linux ELF** strips the UniFFI metadata sections together with the symbol table. macOS Mach-O is unaffected. | `rust/Cargo.toml`: never set `strip` on the release profile. cargo-ndk strips the Android-shipped .so itself. |
+| `:core-protocol:compileDebugKotlin NO-SOURCE` despite `kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi"))` | AGP + KGP source-set surface is unreliable for generated Kotlin in this combo. Neither the legacy DSL nor `androidComponents.onVariants.sources.kotlin.addStaticSourceDirectory` reach `compileXxxKotlin`. | Make `uniffiBindgen` write straight into `src/main/kotlin/uniffi/<crate>/`. AGP's default Kotlin source-set finds it with no plumbing. `.gitkeep` keeps the directory alive; `.gitignore` excludes the `uniffi/` subtree. |
+| `Configuration cache problems: cannot serialize Gradle script object references` on `:core-protocol:uniffiBindgen` | `doFirst { uniffiOutDir.asFile.mkdirs() }` captured a script-level `Directory` reference. | Drop the `doFirst`. UniFFI creates the `uniffi/<crate>/` subtree itself; AGP creates `src/main/kotlin/` as part of the source set. |
+| `Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver` inside a `runCatching { … }` block, after a null-guard | Kotlin smart-cast doesn't carry across lambda boundaries. | Pin the receiver to a local `val` before the lambda. |
+| `Variable 'scope' must be initialized` on a property that derives from another via `.stateIn(scope, …)` | Class property initialization order — `peers` referenced `scope` before `scope` was declared. | Declare `scope` first; let derived flows reference it. |
+| UniFFI `--library` mode fails on cross-arch input | Linux x86_64 bindgen binary cannot `dlopen` an Android arm64 `.so`. | Add a `hostBuild` task that builds the host-triple library; point bindgen at it. `cargoNdkBuild` separately produces the Android `.so`. Share `target/`, serialize via `mustRunAfter`. |
+| Kotlin compile races bindgen (NO-SOURCE) despite `preBuild dependsOn uniffiBindgen` | `compile*Kotlin` is not parented under `preBuild`. | `afterEvaluate { tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach { dependsOn(uniffiBindgen) } }`. |
+
+---
+
+## Open questions to answer before public v1
+
+1. **Trademark counsel** on the name "OppoLink". Reading the disclaimer
+   carefully suggests we're OK, but a 30-min legal sanity check before
+   the F-Droid listing is cheap insurance. Fallback names: _Whisperlink_,
+   _Lattice_, _Rideau_.
+2. **Bluetooth SIG manufacturer ID registration.** `0xFFFF` is the public
+   test ID; sufficient for development, almost certainly required to be
+   replaced for App Store distribution. Cost ~USD 8 000 for non-members
+   last I checked.
+3. **ColorOS deep-link intent table.** The entries in `COLOROS_COMPAT.md`
+   are unverified. Sprint 3 D10 owns the verification but the intents
+   may have shifted under ColorOS 15.
+4. **Privacy policy URL.** Required for Play Store. F-Droid does not
+   strictly require it but it's good form. Probably a one-page static
+   document hosted on the GitHub Pages branch.
+5. **Maintainer-of-record + GPG signing key** for F-Droid.
+6. **`.well-known` for Universal Links** (Sprint 5+ if we add `oppolink://`
+   peer-invite deep links).
+
+---
+
+## How to use this file
+
+- **Starting a new Claude Code session?** Read this file top-to-bottom,
+  then the status snapshot tells you which deliverable is in flight.
+- **About to write code?** Cross-check Locked Decisions before introducing
+  any new wire-format constant.
+- **Hit a weird CI failure?** Skim Burns before opening a fresh
+  investigation. We've already lost a lot of hours to those.
+- **Finishing a deliverable?** Update the status snapshot row, move the
+  detailed plan into the post-mortem section (or delete it if it landed
+  as-described), and append any new burns / open questions.

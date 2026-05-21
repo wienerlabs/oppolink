@@ -44,11 +44,17 @@ The `:core-protocol:preBuild` task depends on both steps above. See `android/cor
 - **Kotlin modules**: each has a `README.md` stating the module boundary in 1–3 sentences.
 
 ## What to do when starting a Sprint deliverable
-1. Read [README.md](README.md) sprint section for the deliverable.
-2. Read the relevant `docs/*.md` if architecture is touched.
-3. Plan first (write a checklist), then implement.
-4. Tests for Rust (`cargo test`), instrumented tests for Android where it touches Bluetooth or audio.
-5. Commit with a Conventional Commit subject. Open PR. Squash on merge.
+1. **Read [docs/TASK_LIST.md](docs/TASK_LIST.md) first** — it has the
+   current deliverable's work units, locked decisions, deliberate non-goals,
+   and the CI burns to avoid. Read the burns before opening a new
+   investigation when CI fails.
+2. Read [README.md](README.md) sprint section for the deliverable.
+3. Read the relevant `docs/*.md` if architecture is touched.
+4. Plan first (write a checklist), then implement.
+5. Tests for Rust (`cargo test`), instrumented tests for Android where it touches Bluetooth or audio.
+6. Commit with a Conventional Commit subject. Open PR. Squash on merge.
+7. **Update `docs/TASK_LIST.md` status snapshot** at the end of every
+   deliverable so the next session lands on accurate state.
 
 ## Things that have burned us before (anti-corpus)
 
