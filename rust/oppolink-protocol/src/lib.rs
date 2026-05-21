@@ -11,8 +11,13 @@
 
 uniffi::setup_scaffolding!();
 
+mod handshake;
 mod manufacturer;
 
+pub use handshake::{
+    decide_role, HandshakeError, HandshakeMessage, Role, HANDSHAKE_MAGIC, HANDSHAKE_MAX_LEN,
+    HANDSHAKE_VERSION, PUBKEY_LEN,
+};
 pub use manufacturer::{
     Capabilities, ManufacturerData, MANUFACTURER_DATA_MAX_LEN, MANUFACTURER_ID, MAX_NICKNAME_BYTES,
     PROTOCOL_VERSION, WIRE_MAGIC,
@@ -38,6 +43,28 @@ pub fn service_uuid() -> String {
 #[uniffi::export]
 pub fn manufacturer_id() -> u16 {
     MANUFACTURER_ID
+}
+
+/// 128-bit GATT characteristic UUID that holds the handshake payload.
+/// `4F50504C-0001-4F50-504C-000000000002` — the [`SERVICE_UUID`] with its
+/// trailing suffix bumped from `…0001` to `…0002`.
+#[uniffi::export]
+pub fn handshake_char_uuid() -> String {
+    "4f50504c-0001-4f50-504c-000000000002".to_string()
+}
+
+/// Encode a handshake message to its on-air byte form. See the doc comment on
+/// [`handshake`] for the layout.
+#[uniffi::export]
+pub fn encode_handshake(msg: HandshakeMessage) -> Vec<u8> {
+    handshake::encode(&msg)
+}
+
+/// Parse a handshake message from a GATT characteristic read. Returns `None`
+/// if the magic, version, role byte, or length prefix doesn't match.
+#[uniffi::export]
+pub fn parse_handshake(bytes: Vec<u8>) -> Option<HandshakeMessage> {
+    handshake::parse(&bytes)
 }
 
 /// Encode a [`ManufacturerData`] payload to its on-air byte form.

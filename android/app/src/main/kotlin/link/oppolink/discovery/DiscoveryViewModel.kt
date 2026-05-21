@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import link.oppolink.bluetooth.BluetoothPermissions
 import link.oppolink.bluetooth.Peer
 import link.oppolink.bluetooth.PeerAdvertiser
+import link.oppolink.bluetooth.PeerConnector
 import link.oppolink.bluetooth.PeerScanner
 
 /**
@@ -28,6 +29,7 @@ class DiscoveryViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val scanner: PeerScanner,
     private val advertiser: PeerAdvertiser,
+    private val connector: PeerConnector,
 ) : ViewModel() {
 
     /** Best-effort display nickname; user-editable in Sprint 4. */
@@ -54,11 +56,13 @@ class DiscoveryViewModel @Inject constructor(
     fun start() {
         scanner.start()
         advertiser.start(nickname = deviceNickname)
+        connector.startPassiveServer(nickname = deviceNickname)
     }
 
     fun stop() {
         scanner.stop()
         advertiser.stop()
+        connector.stopPassiveServer()
     }
 
     private fun sanitizeNickname(raw: String): String =

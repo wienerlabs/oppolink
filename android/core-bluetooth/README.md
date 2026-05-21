@@ -25,10 +25,26 @@ L2CAP CoC socket lifecycle.
 - `BluetoothModule` — Hilt singleton providers for `BluetoothManager`,
   `PeerScanner`, and `PeerAdvertiser`.
 
-## Sprint 1 D3+ (next)
-- GATT server / client wiring on top of the discovered peer.
-- L2CAP CoC socket open/accept.
-- Connection state machine (idle → connecting → connected → torn down).
+## Sprint 1 D3 scope (shipped)
+- `ConnectionState` sealed interface — `Idle` / `RoleDecided` / `Connecting`
+  / `Handshaking` / `PsmExchanged` / `Failed`.
+- `GattServerHost` — registers the OppoLink GATT service, allocates an
+  insecure L2CAP server socket via `BluetoothAdapter.listenUsingInsecureL2capChannel()`,
+  and bakes the resulting PSM into the handshake characteristic. Singleton,
+  kept alive while the discovery screen is mounted.
+- `GattClient` — `suspend fetchHandshake(peer)` performs `connectGatt` →
+  `discoverServices` → `readCharacteristic`, parses the payload via Rust
+  `parseHandshake`, and tears the GATT session down. Cancellation closes
+  the GATT handle.
+- `PeerConnector` — orchestrator with `StateFlow<ConnectionState>`. The
+  tapping side always plays the client role; Rust `decide_role` is reserved
+  for Sprint 4 D13 where both peers exchange identifiers over an open
+  channel.
+
+## Sprint 1 D4+ (next)
+- L2CAP CoC socket `accept` on the server side, `createInsecureL2capChannel`
+  on the client side.
+- Echo test (1 KB packets, round-trip latency under 30 ms on LE 2M PHY).
 
 ## Hard rules
 - Never parse manufacturer-data layout in Kotlin. Always call

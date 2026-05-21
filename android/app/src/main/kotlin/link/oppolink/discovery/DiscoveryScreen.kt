@@ -1,6 +1,7 @@
 package link.oppolink.discovery
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +38,10 @@ import link.oppolink.bluetooth.PeerAdvertiser
 import link.oppolink.bluetooth.PeerScanner
 
 @Composable
-fun DiscoveryScreen(viewModel: DiscoveryViewModel = hiltViewModel()) {
+fun DiscoveryScreen(
+    onPeerTap: (Peer) -> Unit,
+    viewModel: DiscoveryViewModel = hiltViewModel(),
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     DisposableEffect(Unit) {
@@ -55,7 +59,7 @@ fun DiscoveryScreen(viewModel: DiscoveryViewModel = hiltViewModel()) {
             DiscoveryHeader(state)
             Spacer(Modifier.height(16.dp))
             ErrorBanner(state)
-            PeerList(state.peers, modifier = Modifier.fillMaxSize())
+            PeerList(state.peers, onPeerTap = onPeerTap, modifier = Modifier.fillMaxSize())
         }
     }
 }
@@ -99,7 +103,11 @@ private fun ErrorBanner(state: DiscoveryUiState) {
 }
 
 @Composable
-private fun PeerList(peers: List<Peer>, modifier: Modifier = Modifier) {
+private fun PeerList(
+    peers: List<Peer>,
+    onPeerTap: (Peer) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     if (peers.isEmpty()) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             Text(
@@ -116,14 +124,18 @@ private fun PeerList(peers: List<Peer>, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(peers, key = { it.bdAddress }) { peer ->
-            PeerRow(peer)
+            PeerRow(peer, onTap = { onPeerTap(peer) })
         }
     }
 }
 
 @Composable
-private fun PeerRow(peer: Peer) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun PeerRow(peer: Peer, onTap: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onTap),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

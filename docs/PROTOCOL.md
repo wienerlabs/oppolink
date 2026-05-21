@@ -57,24 +57,37 @@ and exposed to Kotlin via UniFFI as `encodeManufacturerData` /
 `parseManufacturerData`. Kotlin must not parse the layout by hand — Rust is
 the source of truth.
 
-## Handshake (Sprint 1 D3, over GATT characteristic `…0002`)
+## Handshake (Sprint 1 D3, locked — over GATT characteristic `…0002`)
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │ magic:    "OPL1"            (4 bytes)               │
-│ version:  u8                (currently 0x01)        │
+│ version:  u8                (PROTOCOL_VERSION 0x01) │
 │ role:     u8                (0=server, 1=client)    │
-│ pubkey:   [u8; 32]          (Curve25519 ephemeral)  │
-│ psm:      u16 big-endian    (L2CAP PSM, server→client only; 0 from client) │
+│ pubkey:   [u8; 32]          (Curve25519; zeros in v1, filled in Sprint 4 D13) │
+│ psm:      u16 big-endian    (L2CAP PSM, server-only; client sends 0) │
 │ nick_len: u8                (0..=16)                │
 │ nick:     [u8; nick_len]    (UTF-8, no null term)   │
 └─────────────────────────────────────────────────────┘
 ```
 
-- Role tie-break: the peer with the **lower BD_ADDR** (compared byte-wise
-  big-endian) takes the **server** role and allocates the PSM.
-- The PSM is the only field that flows server→client; the client sends
-  `psm = 0`.
+- **Role assignment in v1 is UI-driven**, not BD_ADDR-driven. The user taps a
+  peer in the discovery list; the tapping side takes the **client** role and
+  the tapped side stays passive with its GATT server already advertising the
+  OppoLink service. Modern Android refuses to expose the local BD_ADDR to
+  apps, so the byte-wise comparison the early protocol drafts called for is
+  not implementable.
+  - The Rust `decide_role(local_bd_addr, remote_bd_addr) → Role` helper still
+    exists; it returns the lower-BD_ADDR-wins role and is reserved for the
+    Sprint 4 D13 ECDH handshake, where both peers exchange ephemeral pubkeys
+    over an already-open L2CAP channel and can include their own identifier
+    in the payload.
+- **Server side** writes the handshake bytes into the read-only characteristic
+  value when the GATT service is registered. A successful read takes one
+  GATT round-trip.
+- **PSM** is the only field that flows server → client; the client emits 0.
+- `encode_handshake` / `parse_handshake` are exposed via UniFFI; Kotlin must
+  not parse the layout by hand.
 
 ## Audio frame (over L2CAP CoC)
 

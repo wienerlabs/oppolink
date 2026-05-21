@@ -39,4 +39,12 @@ object BluetoothModule {
         manager: BluetoothManager,
     ): PeerScanner =
         RealPeerScanner(context, manager.adapter?.bluetoothLeScanner)
+
+    @Provides
+    @Singleton
+    fun providePeerConnector(
+        @ApplicationContext context: Context,
+        manager: BluetoothManager,
+    ): PeerConnector =
+        RealPeerConnector(context, manager.adapter, manager)
 }
