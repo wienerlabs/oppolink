@@ -30,6 +30,8 @@ import link.oppolink.audio.AudioCapture
 import link.oppolink.audio.AudioPlayback
 import uniffi.oppolink_protocol.AudioFrameHeader
 import uniffi.oppolink_protocol.Capabilities
+import uniffi.oppolink_protocol.JitterBuffer
+import uniffi.oppolink_protocol.JitterPopResult
 import uniffi.oppolink_protocol.Role
 import uniffi.oppolink_protocol.VoipDecoder
 import uniffi.oppolink_protocol.VoipEncoder
@@ -248,10 +250,17 @@ internal class RealPeerConnector(
     /**
      * Symmetric duplex pipeline shared by client and server.
      *
-     * Owns the audio + codec lifecycle and runs the Tx + Rx threads in
-     * parallel until the duration elapses (client) or the socket closes
-     * (server). On completion / failure, it tears down the pipeline and
-     * pushes the matching [ConnectionState] update.
+     * Three dedicated [Thread]s run at `URGENT_AUDIO`:
+     *   - **Tx** captures PCM, encodes Opus, length-prefixes and writes the
+     *     frame to L2CAP.
+     *   - **Rx** reads framed bytes off L2CAP, parses, and pushes the Opus
+     *     packet into a [JitterBuffer] keyed by `seq`.
+     *   - **Playback** ticks against the jitter buffer: `pop_next()` yields
+     *     a packet to decode, a `Plc` request, or `Empty` during prewarm.
+     *
+     * Decoupling Rx from playback (Sprint 3 D8) means receive jitter no
+     * longer translates into playback jitter — out-of-order frames are
+     * reassembled, late arrivals dropped, missing frames PLC'd.
      */
     @SuppressLint("MissingPermission")
     private fun runDuplexCall(
@@ -269,10 +278,12 @@ internal class RealPeerConnector(
         val running = AtomicBoolean(true)
         var txThread: Thread? = null
         var rxThread: Thread? = null
+        var playbackThread: Thread? = null
 
         try {
             val encoder = VoipEncoder()
             val decoder = VoipDecoder()
+            val jitterBuffer = JitterBuffer()
             capture.prepare(); capture.start()
             playback.prepare(); playback.start()
 
@@ -292,8 +303,13 @@ internal class RealPeerConnector(
                 )
                 rxThread = startRxThread(
                     channel = channel,
+                    jitterBuffer = jitterBuffer,
+                    running = running,
+                )
+                playbackThread = startPlaybackThread(
                     decoder = decoder,
                     playback = playback,
+                    jitterBuffer = jitterBuffer,
                     role = role,
                     peer = peer,
                     psm = psm,
@@ -304,13 +320,15 @@ internal class RealPeerConnector(
                 )
 
                 // Tx exits when its duration is up (client) or when send fails
-                // (server, because the L2CAP socket got closed). Rx exits when
-                // the inputStream returns EOF. Wait for Tx first, then close
-                // the socket so Rx's blocking read unblocks.
+                // (server, because the socket got closed). Rx exits when the
+                // inputStream returns EOF. Wait for Tx, then close the socket
+                // so Rx unblocks, then give the playback thread a grace window
+                // to drain any frames still buffered.
                 txThread?.join()
                 running.set(false)
                 runCatching { socket.close() }
                 rxThread?.join(SHUTDOWN_GRACE_MS)
+                playbackThread?.join(SHUTDOWN_GRACE_MS)
             }
         } finally {
             running.set(false)
@@ -318,6 +336,7 @@ internal class RealPeerConnector(
             runCatching { playback.stop() }; runCatching { playback.close() }
             txThread?.interrupt()
             rxThread?.interrupt()
+            playbackThread?.interrupt()
         }
 
         _state.value = ConnectionState.CallEnded(
@@ -395,20 +414,11 @@ internal class RealPeerConnector(
 
     private fun startRxThread(
         channel: L2capChannel,
-        decoder: VoipDecoder,
-        playback: AudioPlayback,
-        role: Role,
-        peer: Peer,
-        psm: Int,
-        phy: Int,
-        framesSent: AtomicInteger,
-        framesReceived: AtomicInteger,
+        jitterBuffer: JitterBuffer,
         running: AtomicBoolean,
     ): Thread = Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val lenBuf = ByteArray(2)
-        val pcmBuf = ShortArray(pcmSamplesPerFrame().toInt())
-
         while (running.get()) {
             try {
                 channel.receiveExact(lenBuf)
@@ -420,27 +430,77 @@ internal class RealPeerConnector(
                 val frameBuf = ByteArray(frameLen)
                 channel.receiveExact(frameBuf)
                 val parsed = parseAudioFrame(frameBuf)
-                val pcmList = decoder.decode(parsed.opusPacket)
-                val copyLen = minOf(pcmList.size, pcmBuf.size)
-                // UniFFI 0.28 hands us a Kotlin List even for a Vec<i16>; this
-                // copy is unavoidable until we move to a custom UniFFI type.
-                for (i in 0 until copyLen) pcmBuf[i] = pcmList[i]
-                playback.writeFrame(pcmBuf)
-                val r = framesReceived.incrementAndGet()
-                _state.value = ConnectionState.InCall(
-                    role = role,
-                    peer = peer,
-                    psm = psm,
-                    negotiatedPhy = phy,
-                    framesSent = framesSent.get(),
-                    framesReceived = r,
-                )
+                jitterBuffer.push(parsed.header.seq, parsed.opusPacket)
             } catch (e: IOException) {
                 Log.i(TAG, "Rx closing: ${e.message}")
                 break
             }
         }
     }, "OppoLinkCallRx").apply {
+        priority = Thread.MAX_PRIORITY
+        start()
+    }
+
+    /**
+     * Drives the playback cadence. Pulls from the jitter buffer, decodes
+     * (or PLCs) into PCM, and writes to AudioTrack. AudioTrack's own buffer
+     * drain rate paces the loop at ~20 ms per frame; we never sleep on the
+     * happy path. The 1 ms sleep below only fires during prewarm before
+     * the jitter buffer has collected `target_depth` frames.
+     */
+    private fun startPlaybackThread(
+        decoder: VoipDecoder,
+        playback: AudioPlayback,
+        jitterBuffer: JitterBuffer,
+        role: Role,
+        peer: Peer,
+        psm: Int,
+        phy: Int,
+        framesSent: AtomicInteger,
+        framesReceived: AtomicInteger,
+        running: AtomicBoolean,
+    ): Thread = Thread({
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+        val pcmBuf = ShortArray(pcmSamplesPerFrame().toInt())
+
+        while (running.get()) {
+            val popped = jitterBuffer.popNext()
+            val pcmList = when (popped) {
+                is JitterPopResult.Packet -> {
+                    try {
+                        decoder.decode(popped.opusPacket)
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "decode failed: ${t.message}; PLC instead")
+                        runCatching { decoder.decodePlc() }.getOrNull()
+                    }
+                }
+                JitterPopResult.Plc -> runCatching { decoder.decodePlc() }.getOrNull()
+                JitterPopResult.Empty -> {
+                    // Prewarm window — no data yet; idle briefly and try
+                    // again. Production traffic should leave Empty within
+                    // a few ticks of the first arrival.
+                    Thread.sleep(1)
+                    continue
+                }
+            } ?: continue
+
+            val copyLen = minOf(pcmList.size, pcmBuf.size)
+            // UniFFI 0.28 hands us a Kotlin List even for a Vec<i16>; this
+            // copy is unavoidable until we move to a custom UniFFI type.
+            for (i in 0 until copyLen) pcmBuf[i] = pcmList[i]
+            playback.writeFrame(pcmBuf)
+
+            val r = framesReceived.incrementAndGet()
+            _state.value = ConnectionState.InCall(
+                role = role,
+                peer = peer,
+                psm = psm,
+                negotiatedPhy = phy,
+                framesSent = framesSent.get(),
+                framesReceived = r,
+            )
+        }
+    }, "OppoLinkCallPlay").apply {
         priority = Thread.MAX_PRIORITY
         start()
     }

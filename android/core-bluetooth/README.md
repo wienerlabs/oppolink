@@ -41,6 +41,17 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 3 D8 scope (shipped)
+- `runDuplexCall` now spawns **three** dedicated threads per side:
+  `OppoLinkCallTx`, `OppoLinkCallRx`, and `OppoLinkCallPlay`. The
+  jitter buffer (`oppolink-protocol::JitterBuffer`) sits between Rx and
+  Play, absorbing arrival jitter and triggering PLC when a frame is
+  missing.
+- Wire format unchanged — D8 is pure receiver-side machinery. Adaptive
+  depth bounded at 2–5 frames (40–100 ms).
+- Shutdown sequence gains a third grace-wait for the Play thread so it
+  can drain any frames still buffered.
+
 ## Sprint 2 D6 scope (shipped)
 - `runDuplexCall` shared helper drives the symmetric pipeline on both
   sides. Per device: one `OppoLinkCallTx` thread (capture → Opus →

@@ -14,6 +14,7 @@ uniffi::setup_scaffolding!();
 mod audio;
 mod echo;
 mod handshake;
+mod jitter;
 mod manufacturer;
 
 pub use audio::{AudioError, AudioFrameHeader, ParsedAudioFrame, VoipDecoder, VoipEncoder};
@@ -22,6 +23,7 @@ pub use handshake::{
     decide_role, HandshakeError, HandshakeMessage, Role, HANDSHAKE_MAGIC, HANDSHAKE_MAX_LEN,
     HANDSHAKE_VERSION, PUBKEY_LEN,
 };
+pub use jitter::{JitterBuffer, JitterPopResult, JitterPushResult, JitterStats};
 pub use manufacturer::{
     Capabilities, ManufacturerData, MANUFACTURER_DATA_MAX_LEN, MANUFACTURER_ID, MAX_NICKNAME_BYTES,
     PROTOCOL_VERSION, WIRE_MAGIC,

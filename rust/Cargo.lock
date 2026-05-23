@@ -363,6 +363,7 @@ name = "oppolink-protocol"
 version = "0.1.0"
 dependencies = [
  "oppolink-codec",
+ "oppolink-jitter",
  "thiserror",
  "uniffi",
 ]

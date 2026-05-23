@@ -139,6 +139,10 @@ Opus packet:
   and `ts` counters are per-direction; a peer maintains one pair for
   outgoing frames and tracks the remote peer's pair on the incoming
   side independently.
+- The receive side feeds an adaptive jitter buffer (Sprint 3 D8). The
+  wire format is **unchanged** — the buffer is a pure receiver-side
+  concern that handles reordering, dedup, and PLC trigger. Adaptive
+  depth lives in 40–100 ms range (2–5 frames).
 - `ts` wraps every ~21 minutes — receivers MUST tolerate wrap-around.
 - `seq` increments per peer-direction, starting at 0 on session start. The
   receiver uses `seq` for jitter buffer ordering and PLC trigger detection.

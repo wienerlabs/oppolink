@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-23 after Sprint 2 D6 shipped.
+Last updated: 2026-05-24 after Sprint 3 D8 shipped (CI verify deferred — wienerlabs org Actions billing).
 
 ---
 
@@ -18,7 +18,9 @@ Last updated: 2026-05-23 after Sprint 2 D6 shipped.
 | D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
 | D4 | L2CAP echo test, RTT <30 ms median | `6f7936a` | green first-shot | echo loops on dedicated Thread; real p50/p95 needs hardware |
 | D5 | One-way audio MVP (capture → Opus → L2CAP → playback) | `4653086` | green (1 fix) | libopus via `opus` 0.3.1; `.cargo/config.toml` pins `CMAKE_POLICY_VERSION_MINIMUM=3.5`; AudioError `detail` not `message` |
-| D6 | Full-duplex (Tx + Rx threads per side) | _pending — see commit row updated post-CI_ | _watch_ | shared `runDuplexCall` helper; L2capChannel documents one-sender/one-receiver contract |
+| D6 | Full-duplex (Tx + Rx threads per side) | `879d901` | _billing-blocked_ | wienerlabs org Actions billing failed; pure code-side ship complete |
+| D7 | AEC validation Reno 11 / Find X7 | _hardware-pending_ | n/a | speaker-phone howl test; no code change required |
+| D8 | Adaptive jitter buffer + PLC | _pending — see commit row_ | _billing-blocked_ | `oppolink-jitter` crate + UniFFI Object; Rx → JB → Play thread split |
 
 ---
 
@@ -147,12 +149,37 @@ Open follow-ups (Sprint 3):
 
 ## Sprint 3 — ColorOS Hardening (Week 3)
 
-### D8 — Jitter buffer + PLC
-- Implementation in `rust/oppolink-jitter`. Adaptive depth between
-  [2, 5] frames (40–100 ms). Opus PLC via `opus_decode(NULL, …)` when
-  the buffer underruns.
-- Synthetic loss test: drop 0 %, 1 %, 3 %, 5 % of frames and measure
-  MOS-LQO with PESQ.
+### D8 — Jitter buffer + PLC (shipped)
+
+What landed:
+- `rust/oppolink-jitter` ships `JitterBuffer` with `BTreeMap<u16, Vec<u8>>`
+  ordered storage, signed-16-bit `seq` delta arithmetic for
+  wrap-around-safe ordering, prewarm gate at `target_depth`, and an
+  adaptive controller that grows `target_depth` (up to `max_depth`) on
+  PLC and shrinks after `CLEAN_SHRINK_THRESHOLD = 50` consecutive clean
+  pops. Nine unit tests covering empty / prewarm / out-of-order /
+  duplicate / late / PLC trigger / adaptive grow / wrap-around / delta.
+- `rust/oppolink-protocol::jitter` wraps it in a UniFFI Object with
+  `Mutex` interior mutability. `JitterPushResult` enum exposes
+  `Accepted` / `LateArrival` / `Duplicate`; `JitterPopResult` is a
+  sealed-class-style enum with `Packet { opus_packet }` / `Plc` /
+  `Empty` variants.
+- Kotlin `:core-bluetooth` `runDuplexCall` now spawns a third
+  `OppoLinkCallPlay` thread (`URGENT_AUDIO`) that ticks against the
+  jitter buffer; the Rx thread is now strictly `receive → push`. PLC
+  decoding uses `decodePlc()` from the existing VoipDecoder UniFFI
+  Object.
+- Shutdown sequence: Tx exit → close socket → wait Rx grace → wait
+  Play grace. The Play thread drains the buffer (returning Plc or
+  Packet) until `running` flips and the loop exits.
+
+Open follow-ups:
+- Synthetic loss test (0/1/3/5%) with PESQ MOS-LQO needs real hardware.
+  Track in Sprint 4 D14 (battery profiling) since both need Tier 1
+  devices.
+- The 1 ms `Thread.sleep` in the Play prewarm path is the only
+  remaining hot-path sleep; once we ship a `BlockingQueue`-style
+  primitive in Rust the prewarm path can park instead.
 
 ### D9 — Foreground service
 - `CallForegroundService` extends `Service`. Notification channel
