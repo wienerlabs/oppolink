@@ -17,7 +17,7 @@ Last updated: 2026-05-21 after Sprint 2 D5 shipped.
 | D2 | BLE discovery (advertise + scan + UI) | `f41ae3c` | green | required 6 CI fixes — see "Burns" below |
 | D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
 | D4 | L2CAP echo test, RTT <30 ms median | `6f7936a` | green first-shot | echo loops on dedicated Thread; real p50/p95 needs hardware |
-| D5 | One-way audio MVP (capture → Opus → L2CAP → playback) | _pending — see commit row updated post-CI_ | _watch_ | libopus via `opus` 0.3.1; `.cargo/config.toml` pins `CMAKE_POLICY_VERSION_MINIMUM=3.5` |
+| D5 | One-way audio MVP (capture → Opus → L2CAP → playback) | `4653086` | green (1 fix) | libopus via `opus` 0.3.1; `.cargo/config.toml` pins `CMAKE_POLICY_VERSION_MINIMUM=3.5`; AudioError `detail` not `message` |
 
 ---
 
