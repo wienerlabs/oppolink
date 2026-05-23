@@ -65,15 +65,23 @@ interface PeerConnector {
     /** Client-side handshake against [peer]; advances state through to PsmExchanged. */
     suspend fun connect(peer: Peer)
 
-    /** Drive a full-duplex call for [durationMs] (client side controls the clock). */
-    suspend fun runCall(peer: Peer, durationMs: Long = DEFAULT_CALL_DURATION_MS)
+    /**
+     * Drive a full-duplex call.
+     *
+     * `durationMs = null` runs indefinitely until [cancel] or the peer
+     * closes the socket — that's what the Sprint 3 D9 foreground service
+     * passes. A non-null value caps the client-side Tx loop and is useful
+     * for the in-app "10 second test call" affordance still on the
+     * "Start full-duplex call" button.
+     */
+    suspend fun runCall(peer: Peer, durationMs: Long? = null)
 
     /** Abort an in-flight call. */
     fun cancel()
 
     companion object {
-        /** Default duplex-call duration the UI button uses (10 seconds). */
-        const val DEFAULT_CALL_DURATION_MS: Long = 10_000L
+        /** Test-call duration the in-app button uses (10 seconds). */
+        const val SHORT_TEST_CALL_DURATION_MS: Long = 10_000L
     }
 }
 
@@ -145,7 +153,7 @@ internal class RealPeerConnector(
 
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    override suspend fun runCall(peer: Peer, durationMs: Long) {
+    override suspend fun runCall(peer: Peer, durationMs: Long?) {
         val (psm, phy) = when (val s = _state.value) {
             is ConnectionState.PsmExchanged -> s.psm to s.negotiatedPhy
             is ConnectionState.CallEnded -> s.psm to 0

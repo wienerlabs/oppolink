@@ -1,8 +1,11 @@
 package link.oppolink.discovery
 
+import android.content.Context
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
@@ -10,48 +13,62 @@ import kotlinx.coroutines.launch
 import link.oppolink.bluetooth.ConnectionState
 import link.oppolink.bluetooth.Peer
 import link.oppolink.bluetooth.PeerConnector
+import link.oppolink.service.CallForegroundService
 
 /**
- * Drives the Sprint 1 D3 connection screen and the Sprint 2 D5 one-way
- * call. The shared [PeerConnector] singleton owns the GATT session +
- * L2CAP server socket and publishes the live state; this VM only
- * coordinates [start] / [startCall] / [cancel] calls.
+ * Drives the connection screen + the Sprint 3 D9 foreground-service-backed
+ * call session.
+ *
+ * The shared [PeerConnector] singleton owns the GATT session, the L2CAP
+ * server socket, and (now) the audio pipeline. This ViewModel only
+ * coordinates [start], [startCall] (which fires up
+ * [CallForegroundService]), and [cancel].
  */
 @HiltViewModel
 class ConnectionViewModel @Inject constructor(
     private val connector: PeerConnector,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     val state: StateFlow<ConnectionState> = connector.state
 
-    private var inflight: Job? = null
+    private var handshakeJob: Job? = null
 
     fun start(peer: Peer) {
-        inflight?.cancel()
-        inflight = viewModelScope.launch {
+        handshakeJob?.cancel()
+        handshakeJob = viewModelScope.launch {
             connector.connect(peer)
         }
     }
 
-    /** Kick off the one-way call once handshake (PsmExchanged) is done. */
-    fun startCall(peer: Peer) {
-        inflight?.cancel()
-        inflight = viewModelScope.launch {
-            runCatching { connector.runCall(peer) }
-                // PeerConnector pushes its own Failed state on error.
-                .onFailure { /* state flow already reflects failure */ }
-        }
+    /**
+     * Kick off the foreground call session once the handshake has put us
+     * in `PsmExchanged`. The service reads the current peer from
+     * `connector.state.value` so we don't need to parcel `Peer` through
+     * an Intent.
+     */
+    fun startCall() {
+        ContextCompat.startForegroundService(
+            appContext,
+            CallForegroundService.startIntent(appContext),
+        )
     }
 
     fun cancel() {
-        inflight?.cancel()
-        inflight = null
+        handshakeJob?.cancel()
+        handshakeJob = null
+        // Stop the foreground service first so its own onDestroy doesn't
+        // race with the connector teardown.
+        appContext.startService(CallForegroundService.stopIntent(appContext))
         connector.cancel()
     }
 
     override fun onCleared() {
-        inflight?.cancel()
-        connector.cancel()
+        handshakeJob?.cancel()
+        // We do NOT cancel the connector or stop the service here; the
+        // call must survive the activity being recreated (rotation,
+        // screen-off + screen-on). The user explicitly hangs up via the
+        // notification or the "End call" UI button.
         super.onCleared()
     }
 }

@@ -66,7 +66,8 @@ fun ConnectionScreen(
             Spacer(Modifier.height(8.dp))
             Footer(
                 state = state,
-                onStartCall = { viewModel.startCall(peer) },
+                onStartCall = { viewModel.startCall() },
+                onEndCall = { viewModel.cancel() },
                 onCancel = {
                     viewModel.cancel()
                     onBack()
@@ -180,11 +181,13 @@ private fun Stat(name: String, value: Int) {
 private fun Footer(
     state: ConnectionState,
     onStartCall: () -> Unit,
+    onEndCall: () -> Unit,
     onCancel: () -> Unit,
     onBack: () -> Unit,
 ) {
     val canStartCall =
         state is ConnectionState.PsmExchanged || state is ConnectionState.CallEnded
+    val isInCall = state is ConnectionState.InCall
     val isTerminal = state is ConnectionState.PsmExchanged ||
         state is ConnectionState.CallEnded ||
         state is ConnectionState.Failed ||
@@ -192,16 +195,18 @@ private fun Footer(
 
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (canStartCall) {
-                Button(onClick = onStartCall) {
+            when {
+                isInCall -> Button(onClick = onEndCall) { Text("End call") }
+                canStartCall -> Button(onClick = onStartCall) {
                     Text(
                         if (state is ConnectionState.CallEnded) "Call again" else "Start full-duplex call",
                     )
                 }
+                else -> Unit
             }
             if (isTerminal) {
                 OutlinedButton(onClick = onBack) { Text("Back") }
-            } else {
+            } else if (!isInCall) {
                 OutlinedButton(onClick = onCancel) { Text("Cancel") }
             }
         }

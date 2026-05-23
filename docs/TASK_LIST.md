@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-24 after Sprint 3 D8 shipped (CI verify deferred — wienerlabs org Actions billing).
+Last updated: 2026-05-24 after Sprint 3 D9 shipped (CI verify deferred — wienerlabs org Actions billing).
 
 ---
 
@@ -20,7 +20,8 @@ Last updated: 2026-05-24 after Sprint 3 D8 shipped (CI verify deferred — wiene
 | D5 | One-way audio MVP (capture → Opus → L2CAP → playback) | `4653086` | green (1 fix) | libopus via `opus` 0.3.1; `.cargo/config.toml` pins `CMAKE_POLICY_VERSION_MINIMUM=3.5`; AudioError `detail` not `message` |
 | D6 | Full-duplex (Tx + Rx threads per side) | `879d901` | _billing-blocked_ | wienerlabs org Actions billing failed; pure code-side ship complete |
 | D7 | AEC validation Reno 11 / Find X7 | _hardware-pending_ | n/a | speaker-phone howl test; no code change required |
-| D8 | Adaptive jitter buffer + PLC | _pending — see commit row_ | _billing-blocked_ | `oppolink-jitter` crate + UniFFI Object; Rx → JB → Play thread split |
+| D8 | Adaptive jitter buffer + PLC | `3938a69` | _billing-blocked_ | `oppolink-jitter` crate + UniFFI Object; Rx → JB → Play thread split |
+| D9 | Foreground service + persistent notification | _pending — see commit row_ | _billing-blocked_ | survives screen-off; "End call" notification action; mm:ss ticker |
 
 ---
 
@@ -181,12 +182,36 @@ Open follow-ups:
   remaining hot-path sleep; once we ship a `BlockingQueue`-style
   primitive in Rust the prewarm path can park instead.
 
-### D9 — Foreground service
-- `CallForegroundService` extends `Service`. Notification channel
-  "OppoLink — call active 02:14" with mute and end-call actions.
-- `FOREGROUND_SERVICE_MICROPHONE` permission already declared in D1.
-- Migrate audio pipeline ownership from the Activity to the service so
-  the call survives screen-off.
+### D9 — Foreground service (shipped, `:app` side)
+
+What landed:
+- `link.oppolink.service.CallForegroundService` (`@AndroidEntryPoint`)
+  with notification channel `oppolink_calls` (IMPORTANCE_LOW). Ongoing
+  notification "OppoLink — call active mm:ss" updated every second by
+  a ticker coroutine; carries `CATEGORY_CALL` + "End call" action
+  PendingIntent.
+- `foregroundServiceType="microphone"` in the Manifest (Android 14+
+  requirement).
+- `PeerConnector.runCall` signature became `durationMs: Long? = null` —
+  the service passes `null` for indefinite duration. The legacy 10 s
+  test call constant is renamed `SHORT_TEST_CALL_DURATION_MS`.
+- `ConnectionViewModel.startCall()` no longer drives the pipeline
+  itself; it fires the service intent. The service reads the current
+  peer from `connector.state` (`PsmExchanged` / `InCall` / `CallEnded`)
+  so we don't have to parcel `Peer` through an `Intent`. `cancel()` and
+  the notification both send `ACTION_STOP`.
+- `ConnectionScreen` `Footer` now shows "End call" while `InCall` and
+  hides the redundant "Cancel" button — the call is the cancel.
+- `ConnectionViewModel.onCleared()` deliberately does NOT cancel — the
+  call must survive activity recreation.
+
+Open follow-ups:
+- The ticker uses `delay(1_000)` which on ColorOS will be coalesced by
+  Doze on long calls; if minutes start drifting we can switch to an
+  `AlarmManager` setExactAndAllowWhileIdle once Sprint 3 D11 lands.
+- Notification permission (API 33+) — the user can deny it; the call
+  still runs but the foreground status indicator goes through the
+  system "ongoing call" path instead of the custom notification.
 
 ### D10 — ColorOS battery whitelist wizard
 - First-run flow in `:coloros-compat`. Detect ColorOS version

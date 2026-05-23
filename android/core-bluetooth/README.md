@@ -41,6 +41,18 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 3 D9 scope (shipped — `:app` side)
+- `:app/.../service/CallForegroundService` owns the call lifecycle when
+  the screen turns off. Reads the current peer from `connector.state`
+  (must be in `PsmExchanged`), starts foreground with notification
+  ("OppoLink — call active mm:ss" + "End call" action), drives
+  `connector.runCall(peer, durationMs = null)` on its own coroutine
+  scope, tears down on `CallEnded` / `Failed`.
+- `:app/.../discovery/ConnectionViewModel.startCall()` now fires the
+  service intent; `cancel()` sends `ACTION_STOP`. The pipeline survives
+  rotation + screen-off because the connector is a Hilt singleton and
+  the service is the lifecycle owner.
+
 ## Sprint 3 D8 scope (shipped)
 - `runDuplexCall` now spawns **three** dedicated threads per side:
   `OppoLinkCallTx`, `OppoLinkCallRx`, and `OppoLinkCallPlay`. The
