@@ -134,6 +134,11 @@ Opus packet:
 - The leading `u16` `len` is the L2CAP-level delimiter so the receiver
   knows exactly how many bytes the next frame consumes. It is not part of
   the framed payload that Rust parses.
+- The format is **symmetric**: both peers emit the same shape in both
+  directions over a single L2CAP CoC socket (Sprint 2 D6 duplex). `seq`
+  and `ts` counters are per-direction; a peer maintains one pair for
+  outgoing frames and tracks the remote peer's pair on the incoming
+  side independently.
 - `ts` wraps every ~21 minutes — receivers MUST tolerate wrap-around.
 - `seq` increments per peer-direction, starting at 0 on session start. The
   receiver uses `seq` for jitter buffer ordering and PLC trigger detection.

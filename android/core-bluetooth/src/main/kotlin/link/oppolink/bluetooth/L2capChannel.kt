@@ -7,14 +7,17 @@ import java.io.IOException
 /**
  * Thin wrapper around an open L2CAP CoC [BluetoothSocket].
  *
- * Owned by exactly one thread at a time — the Sprint 1 D4 echo loop reads
- * and writes from a dedicated [Thread] at audio-grade priority. Once Sprint 2
- * lands, the capture / TX threads will keep this channel hot for the entire
- * call.
+ * **Concurrency contract** (Sprint 2 D6): a single instance is safe to share
+ * between **exactly one** sender thread and **exactly one** receiver thread.
+ * `BluetoothSocket.inputStream` and `outputStream` are independent OS-level
+ * handles, so [send] (write to outputStream) and [receiveExact] (read from
+ * inputStream) cannot interfere with each other. **Do not** call [send] from
+ * two threads, or [receiveExact] from two threads — that would corrupt the
+ * stream because we don't lock at the wrapper level.
  *
  * I/O is intentionally blocking: `BluetoothSocket`'s streams are blocking by
  * design and coroutine dispatcher jitter is not tolerable on the 20 ms audio
- * tick we are about to start rehearsing for.
+ * tick. Use this from dedicated [Thread]s at audio-grade priority.
  */
 class L2capChannel(
     private val socket: BluetoothSocket,

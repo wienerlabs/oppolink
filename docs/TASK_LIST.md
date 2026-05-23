@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-21 after Sprint 2 D5 shipped.
+Last updated: 2026-05-23 after Sprint 2 D6 shipped.
 
 ---
 
@@ -18,6 +18,7 @@ Last updated: 2026-05-21 after Sprint 2 D5 shipped.
 | D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
 | D4 | L2CAP echo test, RTT <30 ms median | `6f7936a` | green first-shot | echo loops on dedicated Thread; real p50/p95 needs hardware |
 | D5 | One-way audio MVP (capture → Opus → L2CAP → playback) | `4653086` | green (1 fix) | libopus via `opus` 0.3.1; `.cargo/config.toml` pins `CMAKE_POLICY_VERSION_MINIMUM=3.5`; AudioError `detail` not `message` |
+| D6 | Full-duplex (Tx + Rx threads per side) | _pending — see commit row updated post-CI_ | _watch_ | shared `runDuplexCall` helper; L2capChannel documents one-sender/one-receiver contract |
 
 ---
 
@@ -105,11 +106,36 @@ What landed:
 Hardware testing: emulator has no L2CAP CoC; two Reno-class devices
 needed to validate end-to-end audio + AEC.
 
-### D6 — Full-duplex
-- Capture / TX / RX / playback all on dedicated threads. Verify with
-  Systrace that the 20 ms tick has zero GC pauses for a 60-second call.
-- Wire AEC / NS / AGC via the standard Android effect APIs (`isAvailable`
-  guards first).
+### D6 — Full-duplex (shipped)
+
+What landed:
+- `PeerConnector` gained a `runDuplexCall(socket, role, peer, psm, phy, durationMs)`
+  shared helper. Owns `AudioCapture` + `AudioPlayback` + `VoipEncoder` +
+  `VoipDecoder` lifecycle and spawns two threads — `OppoLinkCallTx`
+  (capture → Opus → L2CAP write) and `OppoLinkCallRx` (L2CAP read →
+  Opus → AudioTrack), both at `Process.THREAD_PRIORITY_URGENT_AUDIO`.
+- Client side: `runCall(peer, durationMs)` opens the socket then hands
+  it to `runDuplexCall`. Tx exits when the duration elapses, drives the
+  shutdown sequence (close socket → wait Rx briefly → tear down).
+- Server side: passive `OppoLinkAccept` thread now hands the accepted
+  socket to `runDuplexCall(role=SERVER, durationMs=null)`. Runs until
+  the client closes — Rx exits on EOF and the cleanup path fires.
+- `L2capChannel` docs the **one-sender / one-receiver** invariant:
+  `BluetoothSocket.inputStream` and `outputStream` are independent OS
+  handles so duplex needs no wrapper lock.
+- `PROTOCOL.md` audio-frame section calls out the symmetric usage and
+  per-direction `seq` / `ts` counters.
+- UI: button copy "Start full-duplex call" and `InCallCard` flavor text
+  now reads "Capture ⇄ Opus ⇄ L2CAP ⇄ playback on both ends".
+
+Open follow-ups (Sprint 3):
+- Systrace 60-second call should be GC-free on the 20 ms tick. The
+  UniFFI `List<Short>` → `ShortArray` copy in Rx is a known allocation;
+  D8 (jitter buffer) and a custom UniFFI type will eliminate it.
+- Priority inversion risk: capture and playback both run at
+  URGENT_AUDIO; Tx/Rx network threads run at JVM `Thread.MAX_PRIORITY`.
+  Linux scheduling already favors the OS-managed audio path, but
+  validate with `systrace` once we have a Tier 1 device.
 
 ### D7 — AEC validation on Reno 11 / Find X7
 - Speaker-phone test in a small quiet room, mic 0.5 m / 1 m / 2 m.

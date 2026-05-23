@@ -7,9 +7,12 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -26,6 +29,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import link.oppolink.audio.AudioCapture
 import link.oppolink.audio.AudioPlayback
 import uniffi.oppolink_protocol.AudioFrameHeader
+import uniffi.oppolink_protocol.Capabilities
 import uniffi.oppolink_protocol.Role
 import uniffi.oppolink_protocol.VoipDecoder
 import uniffi.oppolink_protocol.VoipEncoder
@@ -34,52 +38,39 @@ import uniffi.oppolink_protocol.parseAudioFrame
 import uniffi.oppolink_protocol.pcmSamplesPerFrame
 
 /**
- * Orchestrates the Sprint 1 D3 handshake + Sprint 2 D5 one-way call.
+ * Orchestrates handshake + full-duplex call lifecycle.
  *
  * **Role assignment** is UI-driven: whichever side taps a peer in the
- * discovery list takes the **client** role and drives the capture →
- * encode → send leg; the tapped side stays passive with its
- * [GattServerHost] already advertising the OppoLink service and runs
- * receive → decode → play on the accept thread.
+ * discovery list takes the **client** role; the tapped side stays passive
+ * with its [GattServerHost] already advertising the OppoLink service.
  *
- * Sprint 2 D5 retires the D4 echo loop — server side no longer mirrors
- * bytes; it decodes Opus and writes PCM to [AudioPlayback]. The Rust
- * `summarize_echo_samples` helper still exists for ad-hoc latency probes
- * but is no longer wired from the UI.
+ * **Sprint 2 D6** moves both sides to a symmetric duplex pipeline. Each
+ * device runs a `Tx` thread (`AudioRecord` → libopus → L2CAP write) and
+ * an `Rx` thread (L2CAP read → libopus → `AudioTrack`) in parallel. Both
+ * threads run at `Process.THREAD_PRIORITY_URGENT_AUDIO`. The L2CAP socket
+ * is shared but `BluetoothSocket.inputStream` and `outputStream` are
+ * independent at the OS level — see [L2capChannel] for the contract.
  */
 interface PeerConnector {
     val state: StateFlow<ConnectionState>
 
-    /**
-     * Start the passive GATT-server side so a remote client can reach us at
-     * any time. Idempotent; safe to call from the discovery screen lifecycle.
-     * Also starts the `OppoLinkAccept` thread which `accept()`s the inbound
-     * L2CAP socket and drives the playback loop.
-     */
+    /** Start the passive GATT-server + accept thread. Idempotent. */
     fun startPassiveServer(nickname: String)
 
     /** Tear down the passive GATT server (e.g. when discovery exits). */
     fun stopPassiveServer()
 
-    /**
-     * Start the client-side handshake against [peer]. Suspends until the
-     * handshake yields a PSM, the connection fails, or the call is cancelled.
-     */
+    /** Client-side handshake against [peer]; advances state through to PsmExchanged. */
     suspend fun connect(peer: Peer)
 
-    /**
-     * Drive the one-way call client side: open the L2CAP socket on the PSM
-     * the handshake exchanged, capture → encode → send for [durationMs].
-     * Pushes [ConnectionState.InCall] heartbeats and finishes on
-     * [ConnectionState.CallEnded].
-     */
+    /** Drive a full-duplex call for [durationMs] (client side controls the clock). */
     suspend fun runCall(peer: Peer, durationMs: Long = DEFAULT_CALL_DURATION_MS)
 
-    /** Abort an in-flight [connect] or [runCall]. */
+    /** Abort an in-flight call. */
     fun cancel()
 
     companion object {
-        /** Default test-call duration the UI button uses (10 seconds). */
+        /** Default duplex-call duration the UI button uses (10 seconds). */
         const val DEFAULT_CALL_DURATION_MS: Long = 10_000L
     }
 }
@@ -162,33 +153,29 @@ internal class RealPeerConnector(
 
         suspendCancellableCoroutine<Unit> { cont ->
             val thread = Thread({
-                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-                val capture = AudioCapture()
-                val encoder: VoipEncoder
                 try {
-                    encoder = VoipEncoder()
-                    capture.prepare()
-                    capture.start()
                     val socket = client.openL2capSocket(peer, psm)
                     socketRef.set(socket)
-                    L2capChannel(socket).use { channel ->
-                        runClientCallLoop(capture, encoder, channel, peer, psm, phy, durationMs)
-                    }
+                    runDuplexCall(
+                        socket = socket,
+                        role = Role.CLIENT,
+                        peer = peer,
+                        psm = psm,
+                        phy = phy,
+                        durationMs = durationMs,
+                    )
                     if (cont.isActive) cont.resume(Unit)
                 } catch (t: Throwable) {
                     if (cont.isCancelled) return@Thread
-                    Log.w(TAG, "client call loop failed: ${t.message}")
+                    Log.w(TAG, "client duplex call failed: ${t.message}")
                     _state.value = ConnectionState.Failed(
                         peer = peer,
                         reason = t.message ?: "call failed",
                         role = Role.CLIENT,
                     )
                     if (cont.isActive) cont.resumeWithException(t)
-                } finally {
-                    runCatching { capture.stop() }
-                    runCatching { capture.close() }
                 }
-            }, "OppoLinkCallClient")
+            }, "OppoLinkCallOrchestrator")
             thread.priority = Thread.MAX_PRIORITY
             thread.start()
             cont.invokeOnCancellation {
@@ -217,21 +204,19 @@ internal class RealPeerConnector(
     private fun startPassiveAcceptThread(host: GattServerHost) {
         passiveAcceptThread?.interrupt()
         passiveAcceptThread = Thread({
-            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-            val playback = AudioPlayback()
+            val socket = host.acceptL2cap() ?: return@Thread
+            val remotePeer = synthesizeRemotePeer(socket)
             try {
-                val decoder = VoipDecoder()
-                playback.prepare()
-                playback.start()
-                val socket = host.acceptL2cap() ?: return@Thread
-                L2capChannel(socket).use { channel ->
-                    runServerPlaybackLoop(decoder, playback, channel)
-                }
+                runDuplexCall(
+                    socket = socket,
+                    role = Role.SERVER,
+                    peer = remotePeer,
+                    psm = host.psm(),
+                    phy = 0, // PHY readback only runs on the client during fetchHandshake
+                    durationMs = null,
+                )
             } catch (t: Throwable) {
-                Log.w(TAG, "server playback loop failed: ${t.message}")
-            } finally {
-                runCatching { playback.stop() }
-                runCatching { playback.close() }
+                Log.w(TAG, "server duplex call failed: ${t.message}")
             }
         }, "OppoLinkAccept").apply {
             priority = Thread.MAX_PRIORITY
@@ -240,76 +225,141 @@ internal class RealPeerConnector(
     }
 
     /**
-     * Server playback loop: read length-prefixed audio frames off the
-     * channel, decode Opus, write PCM to AudioTrack. The wire delimiter is
-     * a 2-byte big-endian length prefix so the receive side knows how many
-     * bytes to pull before parsing.
+     * Build a stand-in [Peer] for the server side that does not have a
+     * discovery-time advertisement to draw from. RSSI 0 + default capability
+     * bitmap is good enough for state display; real values arrive once
+     * Sprint 4 D13 lands and both peers exchange identifiers over the
+     * already-open L2CAP channel.
      */
-    private fun runServerPlaybackLoop(
-        decoder: VoipDecoder,
-        playback: AudioPlayback,
-        channel: L2capChannel,
-    ) {
-        val lenBuf = ByteArray(2)
-        var maxFrameLen = 1500
-        var frameBuf = ByteArray(maxFrameLen)
-        val pcmBuf = ShortArray(pcmSamplesPerFrame().toInt())
-
-        while (true) {
-            try {
-                channel.receiveExact(lenBuf)
-                val frameLen = ((lenBuf[0].toInt() and 0xFF) shl 8) or (lenBuf[1].toInt() and 0xFF)
-                if (frameLen <= 0 || frameLen > MAX_WIRE_FRAME) {
-                    Log.w(TAG, "invalid frame length on the wire: $frameLen; closing")
-                    return
-                }
-                if (frameLen > maxFrameLen) {
-                    maxFrameLen = frameLen
-                    frameBuf = ByteArray(maxFrameLen)
-                }
-                val readBuf = ByteArray(frameLen)
-                channel.receiveExact(readBuf)
-                val parsed = parseAudioFrame(readBuf)
-                val pcmList = decoder.decode(parsed.opusPacket)
-                // List<Short> → pre-allocated ShortArray. UniFFI 0.28 hands us
-                // a Kotlin List even when the Rust side is a Vec<i16>; this
-                // copy is the unavoidable cost until we move to a custom type.
-                val copyLen = minOf(pcmList.size, pcmBuf.size)
-                for (i in 0 until copyLen) pcmBuf[i] = pcmList[i]
-                playback.writeFrame(pcmBuf)
-            } catch (e: IOException) {
-                Log.i(TAG, "server playback loop closing: ${e.message}")
-                return
-            }
-        }
+    @SuppressLint("MissingPermission")
+    private fun synthesizeRemotePeer(socket: BluetoothSocket): Peer {
+        val device = socket.remoteDevice
+        val nickname = runCatching { device?.name }.getOrNull() ?: "(remote)"
+        val address = device?.address ?: "00:00:00:00:00:00"
+        return Peer(
+            bdAddress = address,
+            nickname = nickname,
+            rssi = 0,
+            capabilities = Capabilities(pcm16kMono = true, opus = true, aead = false),
+            lastSeenAtMs = SystemClock.elapsedRealtime(),
+        )
     }
 
     /**
-     * Client capture loop: capture → encode → length-prefix → send.
-     * Maintains the wall-clock target by pacing on the AudioRecord stream
-     * itself (blocking read consumes ~20 ms whenever a frame is ready).
+     * Symmetric duplex pipeline shared by client and server.
+     *
+     * Owns the audio + codec lifecycle and runs the Tx + Rx threads in
+     * parallel until the duration elapses (client) or the socket closes
+     * (server). On completion / failure, it tears down the pipeline and
+     * pushes the matching [ConnectionState] update.
      */
-    private fun runClientCallLoop(
-        capture: AudioCapture,
-        encoder: VoipEncoder,
-        channel: L2capChannel,
+    @SuppressLint("MissingPermission")
+    private fun runDuplexCall(
+        socket: BluetoothSocket,
+        role: Role,
         peer: Peer,
         psm: Int,
         phy: Int,
-        durationMs: Long,
+        durationMs: Long?,
     ) {
+        val capture = AudioCapture()
+        val playback = AudioPlayback()
+        val framesSent = AtomicInteger(0)
+        val framesReceived = AtomicInteger(0)
+        val running = AtomicBoolean(true)
+        var txThread: Thread? = null
+        var rxThread: Thread? = null
+
+        try {
+            val encoder = VoipEncoder()
+            val decoder = VoipDecoder()
+            capture.prepare(); capture.start()
+            playback.prepare(); playback.start()
+
+            L2capChannel(socket).use { channel ->
+                txThread = startTxThread(
+                    channel = channel,
+                    capture = capture,
+                    encoder = encoder,
+                    role = role,
+                    peer = peer,
+                    psm = psm,
+                    phy = phy,
+                    framesSent = framesSent,
+                    framesReceived = framesReceived,
+                    running = running,
+                    durationMs = durationMs,
+                )
+                rxThread = startRxThread(
+                    channel = channel,
+                    decoder = decoder,
+                    playback = playback,
+                    role = role,
+                    peer = peer,
+                    psm = psm,
+                    phy = phy,
+                    framesSent = framesSent,
+                    framesReceived = framesReceived,
+                    running = running,
+                )
+
+                // Tx exits when its duration is up (client) or when send fails
+                // (server, because the L2CAP socket got closed). Rx exits when
+                // the inputStream returns EOF. Wait for Tx first, then close
+                // the socket so Rx's blocking read unblocks.
+                txThread?.join()
+                running.set(false)
+                runCatching { socket.close() }
+                rxThread?.join(SHUTDOWN_GRACE_MS)
+            }
+        } finally {
+            running.set(false)
+            runCatching { capture.stop() }; runCatching { capture.close() }
+            runCatching { playback.stop() }; runCatching { playback.close() }
+            txThread?.interrupt()
+            rxThread?.interrupt()
+        }
+
+        _state.value = ConnectionState.CallEnded(
+            role = role,
+            peer = peer,
+            psm = psm,
+            framesSent = framesSent.get(),
+            framesReceived = framesReceived.get(),
+        )
+    }
+
+    private fun startTxThread(
+        channel: L2capChannel,
+        capture: AudioCapture,
+        encoder: VoipEncoder,
+        role: Role,
+        peer: Peer,
+        psm: Int,
+        phy: Int,
+        framesSent: AtomicInteger,
+        framesReceived: AtomicInteger,
+        running: AtomicBoolean,
+        durationMs: Long?,
+    ): Thread = Thread({
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val pcm = ShortArray(capture.frameSamples)
         var seq: Int = 0
         var tsTicks: Int = 0
-        val deadline = System.nanoTime() + durationMs * 1_000_000L
+        val deadlineNs: Long = durationMs?.let { System.nanoTime() + it * 1_000_000L } ?: Long.MAX_VALUE
 
-        while (System.nanoTime() < deadline) {
+        while (running.get() && System.nanoTime() < deadlineNs) {
             val read = capture.readFrame(pcm)
             if (read < pcm.size) {
-                Log.w(TAG, "AudioRecord underrun: $read/${pcm.size}; stopping")
+                Log.w(TAG, "AudioRecord underrun: $read/${pcm.size}; stopping Tx")
                 break
             }
-            val opus = encoder.encode(pcm.toList())
+            val opus = try {
+                encoder.encode(pcm.toList())
+            } catch (t: Throwable) {
+                Log.w(TAG, "encode failed: ${t.message}; stopping Tx")
+                break
+            }
             val header = AudioFrameHeader(
                 seq = (seq and 0xFFFF).toUShort(),
                 ts = (tsTicks and 0xFFFF).toUShort(),
@@ -319,31 +369,87 @@ internal class RealPeerConnector(
                 ((framed.size shr 8) and 0xFF).toByte(),
                 (framed.size and 0xFF).toByte(),
             )
-            channel.send(lenPrefix)
-            channel.send(framed)
+            try {
+                channel.send(lenPrefix)
+                channel.send(framed)
+            } catch (e: IOException) {
+                Log.i(TAG, "Tx closing: ${e.message}")
+                break
+            }
             seq = (seq + 1) and 0xFFFF
             tsTicks = (tsTicks + 1) and 0xFFFF
+            val s = framesSent.incrementAndGet()
             _state.value = ConnectionState.InCall(
-                role = Role.CLIENT,
+                role = role,
                 peer = peer,
                 psm = psm,
                 negotiatedPhy = phy,
-                framesSent = seq,
-                framesReceived = 0,
+                framesSent = s,
+                framesReceived = framesReceived.get(),
             )
         }
-        _state.value = ConnectionState.CallEnded(
-            role = Role.CLIENT,
-            peer = peer,
-            psm = psm,
-            framesSent = seq,
-            framesReceived = 0,
-        )
+    }, "OppoLinkCallTx").apply {
+        priority = Thread.MAX_PRIORITY
+        start()
+    }
+
+    private fun startRxThread(
+        channel: L2capChannel,
+        decoder: VoipDecoder,
+        playback: AudioPlayback,
+        role: Role,
+        peer: Peer,
+        psm: Int,
+        phy: Int,
+        framesSent: AtomicInteger,
+        framesReceived: AtomicInteger,
+        running: AtomicBoolean,
+    ): Thread = Thread({
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+        val lenBuf = ByteArray(2)
+        val pcmBuf = ShortArray(pcmSamplesPerFrame().toInt())
+
+        while (running.get()) {
+            try {
+                channel.receiveExact(lenBuf)
+                val frameLen = ((lenBuf[0].toInt() and 0xFF) shl 8) or (lenBuf[1].toInt() and 0xFF)
+                if (frameLen <= 0 || frameLen > MAX_WIRE_FRAME) {
+                    Log.w(TAG, "invalid frame length on the wire: $frameLen; closing Rx")
+                    break
+                }
+                val frameBuf = ByteArray(frameLen)
+                channel.receiveExact(frameBuf)
+                val parsed = parseAudioFrame(frameBuf)
+                val pcmList = decoder.decode(parsed.opusPacket)
+                val copyLen = minOf(pcmList.size, pcmBuf.size)
+                // UniFFI 0.28 hands us a Kotlin List even for a Vec<i16>; this
+                // copy is unavoidable until we move to a custom UniFFI type.
+                for (i in 0 until copyLen) pcmBuf[i] = pcmList[i]
+                playback.writeFrame(pcmBuf)
+                val r = framesReceived.incrementAndGet()
+                _state.value = ConnectionState.InCall(
+                    role = role,
+                    peer = peer,
+                    psm = psm,
+                    negotiatedPhy = phy,
+                    framesSent = framesSent.get(),
+                    framesReceived = r,
+                )
+            } catch (e: IOException) {
+                Log.i(TAG, "Rx closing: ${e.message}")
+                break
+            }
+        }
+    }, "OppoLinkCallRx").apply {
+        priority = Thread.MAX_PRIORITY
+        start()
     }
 
     private companion object {
         const val TAG = "PeerConnector"
         /** Hard cap on a single audio frame as seen on the wire (header + opus). */
         const val MAX_WIRE_FRAME = 1504
+        /** Time we wait for Rx to drain before forcibly tearing down. */
+        const val SHUTDOWN_GRACE_MS = 1_500L
     }
 }

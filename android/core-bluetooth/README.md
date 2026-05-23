@@ -41,14 +41,23 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 2 D6 scope (shipped)
+- `runDuplexCall` shared helper drives the symmetric pipeline on both
+  sides. Per device: one `OppoLinkCallTx` thread (capture → Opus →
+  L2CAP write) and one `OppoLinkCallRx` thread (L2CAP read → Opus →
+  AudioTrack), both at `Process.THREAD_PRIORITY_URGENT_AUDIO`.
+- `BluetoothSocket.inputStream` and `outputStream` are OS-independent
+  handles so the duplex pair can read + write the same socket without
+  a wrapper lock. `L2capChannel` documents the one-sender / one-receiver
+  contract.
+- Server-side accept thread now hands the socket to `runDuplexCall` with
+  `role=SERVER` and `durationMs=null` — the call runs until the client
+  closes the socket. A synthetic `Peer` is built from
+  `BluetoothSocket.remoteDevice`.
+
 ## Sprint 2 D5 scope (shipped)
-- `PeerConnector.runCall(peer, durationMs)` — capture → Opus encode →
-  length-prefixed audio frame → L2CAP TX on `OppoLinkCallClient`
-  thread at `URGENT_AUDIO`.
-- Server `OppoLinkAccept` thread retired the D4 echo loop; now decodes
-  Opus and writes PCM to `AudioPlayback`.
-- `ConnectionState.InCall` (frame counters + PHY) and
-  `ConnectionState.CallEnded`.
+- `PeerConnector.runCall(peer, durationMs)` introduced the one-way
+  capture → encode → L2CAP TX pipeline. D6 upgraded it to duplex.
 
 ## Sprint 1 D4 scope (shipped)
 - `L2capChannel` — `AutoCloseable` wrapper around `BluetoothSocket` with

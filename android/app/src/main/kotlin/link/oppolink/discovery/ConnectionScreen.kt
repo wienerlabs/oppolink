@@ -139,7 +139,7 @@ private fun InCallCard(inCall: ConnectionState.InCall, modifier: Modifier = Modi
             Stat("frames received", inCall.framesReceived)
             Spacer(Modifier.height(4.dp))
             Text(
-                "PSM ${inCall.psm} · 20 ms Opus VoIP frames over L2CAP",
+                "PSM ${inCall.psm} · 20 ms Opus VoIP frames over L2CAP (duplex)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -195,7 +195,7 @@ private fun Footer(
             if (canStartCall) {
                 Button(onClick = onStartCall) {
                     Text(
-                        if (state is ConnectionState.CallEnded) "Call again" else "Start one-way call",
+                        if (state is ConnectionState.CallEnded) "Call again" else "Start full-duplex call",
                     )
                 }
             }
@@ -239,12 +239,12 @@ private fun describe(state: ConnectionState): Triple<String, String, Boolean> = 
     )
     is ConnectionState.InCall -> Triple(
         "Call live",
-        "Capturing → Opus → L2CAP → playback on peer.",
+        "Capture ⇄ Opus ⇄ L2CAP ⇄ playback on both ends.",
         false,
     )
     is ConnectionState.CallEnded -> Triple(
         "Call complete",
-        "L2CAP socket closed after ${state.framesSent} sent frames.",
+        "L2CAP closed · ${state.framesSent} sent / ${state.framesReceived} received.",
         false,
     )
     is ConnectionState.Failed -> Triple(
