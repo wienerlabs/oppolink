@@ -11,9 +11,11 @@
 
 uniffi::setup_scaffolding!();
 
+mod echo;
 mod handshake;
 mod manufacturer;
 
+pub use echo::{EchoStats, ECHO_PACKET_LEN, ECHO_PAYLOAD_LEN, ECHO_SEQ_PREFIX_LEN};
 pub use handshake::{
     decide_role, HandshakeError, HandshakeMessage, Role, HANDSHAKE_MAGIC, HANDSHAKE_MAX_LEN,
     HANDSHAKE_VERSION, PUBKEY_LEN,
@@ -90,4 +92,36 @@ pub fn encode_manufacturer_data(data: ManufacturerData) -> Vec<u8> {
 #[uniffi::export]
 pub fn parse_manufacturer_data(bytes: Vec<u8>) -> Option<ManufacturerData> {
     manufacturer::parse(&bytes)
+}
+
+/// UniFFI accessor for the fixed echo packet size in bytes. The Kotlin side
+/// allocates its receive buffer with this constant so any future protocol
+/// bump only needs to touch Rust.
+#[uniffi::export]
+pub fn echo_packet_size() -> u32 {
+    ECHO_PACKET_LEN as u32
+}
+
+/// Build the on-wire bytes for an echo packet at sequence number `seq`.
+/// Always returns exactly [`ECHO_PACKET_LEN`] bytes — 4-byte big-endian seq
+/// prefix followed by zero-filled body.
+#[uniffi::export]
+pub fn build_echo_packet(seq: u32) -> Vec<u8> {
+    echo::build_packet(seq)
+}
+
+/// Parse the leading sequence number from an echo packet. Returns `None` if
+/// the buffer is shorter than [`ECHO_SEQ_PREFIX_LEN`]; never reads past the
+/// prefix, so a truncated body is still parseable.
+#[uniffi::export]
+pub fn parse_echo_seq(bytes: Vec<u8>) -> Option<u32> {
+    echo::parse_seq(&bytes)
+}
+
+/// Summarize a list of RTT samples (microseconds) into an [`EchoStats`] using
+/// the nearest-rank percentile. Empty input returns a zeroed result so the UI
+/// can render a placeholder without branching on `Option`.
+#[uniffi::export]
+pub fn summarize_echo_samples(samples_us: Vec<u32>) -> EchoStats {
+    echo::summarize(&samples_us)
 }

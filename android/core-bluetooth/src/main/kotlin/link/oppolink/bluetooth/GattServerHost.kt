@@ -11,6 +11,7 @@ import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
@@ -91,6 +92,27 @@ internal class GattServerHost(
         }
 
         Log.i(TAG, "GATT server running, PSM=$allocatedPsm")
+    }
+
+    /**
+     * Blocking accept on the listening L2CAP server socket.
+     *
+     * MUST be called from a dedicated worker [Thread] — the call parks the
+     * caller until a client connects or the socket is closed underneath us.
+     * Returns `null` if the server is no longer running (e.g. [stop] fired
+     * concurrently). The caller owns the returned socket and is responsible
+     * for closing it.
+     */
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT])
+    fun acceptL2cap(): BluetoothSocket? {
+        val socket = serverSocket ?: return null
+        return try {
+            socket.accept()
+        } catch (t: Throwable) {
+            Log.w(TAG, "L2CAP accept failed: ${t.message}")
+            null
+        }
     }
 
     @SuppressLint("MissingPermission")

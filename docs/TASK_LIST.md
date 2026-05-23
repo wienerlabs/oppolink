@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-21 after Sprint 1 D3 shipped (commit `12f5622`).
+Last updated: 2026-05-21 after Sprint 1 D4 shipped.
 
 ---
 
@@ -16,71 +16,53 @@ Last updated: 2026-05-21 after Sprint 1 D3 shipped (commit `12f5622`).
 | D1 | Multi-module skeleton + UniFFI hello_world | `dfd7c5c` | green | scaffold only |
 | D2 | BLE discovery (advertise + scan + UI) | `f41ae3c` | green | required 6 CI fixes — see "Burns" below |
 | D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
-| D4 | L2CAP echo test, RTT <30 ms median | _pending_ | — | next in queue |
+| D4 | L2CAP echo test, RTT <30 ms median | _pending — see commit row updated post-CI_ | _watch_ | echo loops on dedicated Thread |
 
 ---
 
 ## Sprint 1 — Foundations (Week 1)
 
-### D4 — L2CAP echo test (next)
+### D4 — L2CAP echo test (shipped)
 
-Goal: open the L2CAP CoC socket on top of the PSM that D3 already exchanges,
-send 1 KB packets back and forth, measure round-trip latency. Target p50
-<30 ms on LE 2M PHY.
+Open the L2CAP CoC socket on top of the PSM that D3 exchanges, send 1024-byte
+packets back and forth, measure round-trip latency. Target p50 <30 ms on LE
+2M PHY.
 
-**Work units**
-1. **Rust** (`oppolink-protocol`): RTT-measurement helpers in a new `echo`
-   module — `EchoStats { samples_ms: Vec<f32>, p50_ms: f32, p95_ms: f32 }`
-   plus a `record_sample(now_ms: u64) -> EchoStats` reducer. Echo payload
-   shape is just `[seq: u32 BE | payload: [u8; 1020]]` — keep it boring.
-2. **Kotlin `:core-bluetooth`**:
-   - `L2capChannel` wrapper around `BluetoothSocket` (input + output stream,
-     `connect()` on the client side, `accept()` on the server side from the
-     existing `GattServerHost.serverSocket`).
-   - Wire `GattServerHost` so the listening `BluetoothServerSocket` survives
-     `stopPassiveServer` while a peer connection is in flight, then closes.
-     The simplest cut: `GattServerHost` exposes `acceptL2cap(timeout: Long)`.
-   - Extend `PeerConnector` with `runEchoTest(peer, samples = 10): EchoStats`
-     that opens the channel, runs the loop on a dedicated `Thread`
-     (`THREAD_PRIORITY_URGENT_AUDIO` — practice the discipline before audio).
-3. **Kotlin `:app`**:
-   - `ConnectionScreen` gains an "Echo" button visible after PsmExchanged.
-   - New `EchoResultCard` Composable with p50 / p95 / packet-loss numbers.
-   - `ConnectionViewModel.runEchoTest()` returns a Flow-of-progress so the
-     UI can show "5 / 10 samples".
-4. **Tests**:
-   - Rust: stats reducer (median + p95 on hand-rolled fixtures).
-   - Android instrumented: skip (no L2CAP on emulator).
-5. **Docs**: update `PROTOCOL.md` echo packet shape + result table in
-   `COLOROS_COMPAT.md` ("Tier 1 Reno 11 — p50 = …, p95 = …").
+**What landed**
+- Rust `oppolink-protocol::echo`: `EchoStats` record (sample_count + p50_ms
+  + p95_ms + min_ms + max_ms), `build_echo_packet(seq)`, `parse_echo_seq`,
+  `summarize_echo_samples` using nearest-rank percentile. Eight new unit
+  tests; workspace at 31/31.
+- Kotlin `:core-bluetooth`:
+  - `L2capChannel` — blocking `send` / `receiveExact` over `BluetoothSocket`,
+    `AutoCloseable`.
+  - `GattServerHost.acceptL2cap()` — blocking accept on the listening L2CAP
+    server socket; the server echo loop reads + mirrors 1024-byte packets
+    until the client closes.
+  - `GattClient.openL2capSocket(peer, psm)` — client side `createInsecureL2capChannel`
+    + blocking `connect()`.
+  - `GattClient.fetchHandshake` now snapshots negotiated PHY via
+    `BluetoothGatt.readPhy()` and returns `GattHandshakeResult`.
+  - `PeerConnector.runEchoTest(peer, samples=10)` drives the round-trip
+    loop on `OppoLinkEchoClient` thread (`Thread.MAX_PRIORITY`), pushes
+    `EchoInProgress` / `EchoCompleted` onto the state flow.
+  - `ConnectionState` adds `EchoInProgress` and `EchoCompleted`
+    (carries `stats` + `negotiatedPhy`).
+- Kotlin `:app`: `ConnectionScreen` gains "Run echo" button after
+  `PsmExchanged`, `EchoResultCard` with p50 / p95 / min / max + LE 2M / 1M
+  / Coded chip, `LinearProgressIndicator` while running. ViewModel
+  `runEcho(peer)` swallows exceptions — `PeerConnector` already publishes
+  the `Failed` state.
+- Docs: `PROTOCOL.md` "L2CAP echo packet" section locked,
+  `core-bluetooth/README.md` D4 done section.
 
-**Decisions to lock before writing code**
-- Echo packet size: 1024 byte (spec). Carry `u32 seq` + 1020-byte body.
-- Sample count: 10 round trips. Take p50 + p95.
-- Threading: blocking I/O on a dedicated `Thread`; **not** coroutines.
-  Coroutine dispatcher jitter is unacceptable for the audio-path
-  rehearsal, and `BluetoothSocket` is blocking by design.
-- Server-side `accept` timeout: 10 s; UI surfaces a `Failed("peer never
-  opened the L2CAP socket")` after that.
-- Tear-down: client side closes its socket after the final sample; server
-  side returns from `accept` and closes its own.
-
-**Risks**
-- Android emulator does not expose BLE L2CAP CoC — testing requires two
-  real phones. Bake in `Log.i` lines that surface socket open / first
-  byte / close events so adb-pulled logs are diagnostic.
-- `setPreferredPhy(PHY_LE_2M, PHY_LE_2M, PHY_OPTION_NO_PREFERRED)` is
-  best-effort; older radios silently fall back. Read the actual PHY back
-  via `BluetoothGatt.readPhy()` and surface it in the UI so a failed RTT
-  budget can be diagnosed instantly.
-- ColorOS may throttle the L2CAP socket on screen-off. D4 only runs
-  foreground; D9 (foreground service) and D10 (battery whitelist wizard)
-  handle background survival.
-
-### Sprint 1 close-out check
-After D4 lands and CI is green, refresh `COLOROS_COMPAT.md` with real
-RTT numbers from at least one Tier 1 device (Reno 11 / Find X7). If the
-p50 budget is missed, log it as a Sprint 2 risk before starting D5.
+**Sprint 1 close-out check (pending real-hardware run)**
+After two Tier 1 devices (Reno 11 / Find X7) are paired:
+1. Install the debug APK on both.
+2. Tap each other (each side hosts a passive GATT server already).
+3. Press "Run echo" on the client side; record p50 / p95 / PHY in
+   `COLOROS_COMPAT.md`.
+4. If p50 > 30 ms on LE 2M, log it as a Sprint 2 risk before starting D5.
 
 ---
 

@@ -89,6 +89,31 @@ the source of truth.
 - `encode_handshake` / `parse_handshake` are exposed via UniFFI; Kotlin must
   not parse the layout by hand.
 
+## L2CAP echo packet (Sprint 1 D4, locked)
+
+The Sprint 1 close-out test that validates the round-trip latency budget
+before the audio path lands. Carries no semantic payload — every packet is
+1024 bytes of zero-filled body behind a 4-byte sequence prefix. The server
+side simply mirrors each frame back to the sender; the client measures
+`System.nanoTime()` deltas and computes nearest-rank p50 / p95 in
+`rust/oppolink-protocol/src/echo.rs`.
+
+```
+┌─────────────────────────────────────────────────────┐
+│ seq:     u32 big-endian      (sample index, 0-based) │
+│ body:    [u8; 1020]          (zero-filled)           │
+└─────────────────────────────────────────────────────┘
+                              total: 1024 bytes
+```
+
+- The 1024-byte size is exposed to Kotlin via `echoPacketSize()` so a future
+  protocol bump only touches Rust.
+- Default sample count is 10. Result fields: `sample_count`, `p50_ms`,
+  `p95_ms`, `min_ms`, `max_ms`. Empty input returns a zeroed [`EchoStats`]
+  so the UI never has to branch on `Option`.
+- Both sides MUST run the I/O on dedicated `Thread`s — coroutine dispatcher
+  jitter is not tolerable on the 20 ms audio tick we're rehearsing for.
+
 ## Audio frame (over L2CAP CoC)
 
 ```

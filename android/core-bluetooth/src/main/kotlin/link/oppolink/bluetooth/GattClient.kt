@@ -3,10 +3,12 @@ package link.oppolink.bluetooth
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -20,12 +22,28 @@ import uniffi.oppolink_protocol.handshakeCharUuid
 import uniffi.oppolink_protocol.parseHandshake
 
 /**
+ * Result of a successful GATT handshake fetch: the parsed [HandshakeMessage]
+ * plus the PHY the underlying ACL link is currently using.
+ *
+ * `negotiatedPhy`:
+ *  - `1` = LE 1M (default fallback)
+ *  - `2` = LE 2M (the Sprint 1 D4 target for the audio path)
+ *  - `3` = LE Coded (long-range, slower)
+ *  - `0` = readPhy() failed; caller treats this as "unknown, assume 1M".
+ */
+data class GattHandshakeResult(
+    val handshake: HandshakeMessage,
+    val negotiatedPhy: Int,
+)
+
+/**
  * Connects to a discovered [Peer] over GATT, reads the handshake
- * characteristic, and returns the decoded [HandshakeMessage].
+ * characteristic, snapshots the negotiated PHY, and returns both.
  *
  * The GATT session is torn down before returning, so callers that need to
- * hand off to L2CAP must wire it on top — this class is single-purpose for
- * Sprint 1 D3.
+ * hand off to L2CAP must wire it on top via [openL2capSocket] — this class
+ * does not keep a long-lived GATT handle around. The Android L2CAP CoC API
+ * works at the BD_ADDR / PSM level and does not require GATT to stay open.
  */
 internal class GattClient(
     private val context: Context,
@@ -33,17 +51,39 @@ internal class GattClient(
 ) {
 
     /**
-     * Connect, read, disconnect. Throws on any GATT failure or timeout; the
-     * coroutine cancellation path closes the GATT handle cleanly.
+     * Open an L2CAP CoC socket against [peer] at the negotiated [psm]. The
+     * returned [BluetoothSocket] is connected and ready for I/O. Caller owns
+     * it and must close it.
+     *
+     * Blocking: callers MUST invoke from a dedicated worker [Thread] — the
+     * `connect()` call parks until the server side has accepted us or the
+     * radio gives up.
      */
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    suspend fun fetchHandshake(peer: Peer): HandshakeMessage {
+    fun openL2capSocket(peer: Peer, psm: Int): BluetoothSocket {
+        val adapter = adapter ?: error("Bluetooth adapter unavailable")
+        val device = adapter.getRemoteDevice(peer.bdAddress)
+        val socket = device.createInsecureL2capChannel(psm)
+        socket.connect() // blocks until peer accepts or fails
+        return socket
+    }
+
+    /**
+     * Connect, read the handshake characteristic, read PHY, disconnect.
+     *
+     * Throws on any GATT failure or timeout; cancelling the coroutine closes
+     * the GATT handle cleanly.
+     */
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    suspend fun fetchHandshake(peer: Peer): GattHandshakeResult {
         val adapter = adapter ?: error("Bluetooth adapter unavailable")
         val device = adapter.getRemoteDevice(peer.bdAddress)
 
         return suspendCancellableCoroutine { cont ->
             var gatt: BluetoothGatt? = null
+            var parsedHandshake: HandshakeMessage? = null
 
             val callback = object : BluetoothGattCallback() {
                 override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
@@ -102,10 +142,41 @@ internal class GattClient(
                         finishWithError(g, "handshake payload failed to parse")
                         return
                     }
+                    parsedHandshake = parsed
                     Log.i(TAG, "handshake from ${peer.bdAddress}: psm=${parsed.psm.toInt()}")
+                    // Trigger PHY snapshot before tearing the GATT session down.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        g.readPhy()
+                    } else {
+                        finishWithPhy(g, fallbackPhy = 1)
+                    }
+                }
+
+                override fun onPhyRead(g: BluetoothGatt, txPhy: Int, rxPhy: Int, status: Int) {
+                    val phy = if (status == BluetoothGatt.GATT_SUCCESS) {
+                        // We treat the slower of tx/rx as the bottleneck — the
+                        // 20 ms audio tick is bidirectional.
+                        minOf(txPhy, rxPhy)
+                    } else {
+                        Log.w(TAG, "readPhy failed (status=$status); falling back to LE 1M")
+                        1
+                    }
+                    finishWithPhy(g, phy)
+                }
+
+                private fun finishWithPhy(g: BluetoothGatt, fallbackPhy: Int) {
+                    val handshake = parsedHandshake
                     runCatching { g.disconnect() }
                     runCatching { g.close() }
-                    if (cont.isActive) cont.resume(parsed)
+                    if (cont.isActive) {
+                        if (handshake == null) {
+                            cont.resumeWithException(
+                                IllegalStateException("PHY read fired before handshake parsed"),
+                            )
+                        } else {
+                            cont.resume(GattHandshakeResult(handshake, fallbackPhy))
+                        }
+                    }
                 }
 
                 private fun finishWithError(g: BluetoothGatt, message: String) {
@@ -123,7 +194,7 @@ internal class GattClient(
                     context,
                     /* autoConnect = */ false,
                     callback,
-                    BluetoothDeviceTransport.LE,
+                    BluetoothDevice.TRANSPORT_LE,
                 )
             } else {
                 device.connectGatt(context, /* autoConnect = */ false, callback)
@@ -139,9 +210,4 @@ internal class GattClient(
     private companion object {
         const val TAG = "GattClient"
     }
-}
-
-/** Compile-time alias to make the `connectGatt(..., transport=…)` call read clearly. */
-private object BluetoothDeviceTransport {
-    const val LE: Int = android.bluetooth.BluetoothDevice.TRANSPORT_LE
 }

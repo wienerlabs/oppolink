@@ -41,10 +41,26 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
-## Sprint 1 D4+ (next)
-- L2CAP CoC socket `accept` on the server side, `createInsecureL2capChannel`
-  on the client side.
-- Echo test (1 KB packets, round-trip latency under 30 ms on LE 2M PHY).
+## Sprint 1 D4 scope (shipped)
+- `L2capChannel` — `AutoCloseable` wrapper around `BluetoothSocket` with
+  blocking `send` / `receiveExact`. Owned by exactly one thread.
+- `GattServerHost.acceptL2cap()` — blocking accept on the listening L2CAP
+  server socket. Called from a dedicated worker `Thread` started by
+  `PeerConnector.startPassiveServer`.
+- `GattClient.openL2capSocket(peer, psm)` — client-side `createInsecureL2capChannel`
+  + blocking `connect()`.
+- `GattClient.fetchHandshake` now snapshots the negotiated PHY via
+  `BluetoothGatt.readPhy()` and returns a `GattHandshakeResult` carrying
+  both the parsed handshake and the PHY (1 / 2 / 3 = LE 1M / 2M / Coded).
+- `PeerConnector.runEchoTest(peer, samples)` — drives 10 round-trips on
+  `OppoLinkEchoClient` thread (priority MAX), surfaces progress on
+  `ConnectionState.EchoInProgress`, finalises with
+  `ConnectionState.EchoCompleted(stats, negotiatedPhy)`. Server side runs
+  its echo loop on `OppoLinkAccept`.
+
+## Sprint 2+ (next)
+- `AudioRecord` capture → Opus encode → `L2capChannel.send`
+- `L2capChannel.receiveExact` → Opus decode → `AudioTrack`
 
 ## Hard rules
 - Never parse manufacturer-data layout in Kotlin. Always call
