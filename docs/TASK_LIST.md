@@ -16,7 +16,7 @@ Last updated: 2026-05-21 after Sprint 1 D4 shipped.
 | D1 | Multi-module skeleton + UniFFI hello_world | `dfd7c5c` | green | scaffold only |
 | D2 | BLE discovery (advertise + scan + UI) | `f41ae3c` | green | required 6 CI fixes — see "Burns" below |
 | D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
-| D4 | L2CAP echo test, RTT <30 ms median | _pending — see commit row updated post-CI_ | _watch_ | echo loops on dedicated Thread |
+| D4 | L2CAP echo test, RTT <30 ms median | `6f7936a` | green first-shot | echo loops on dedicated Thread; real p50/p95 needs hardware |
 
 ---
 
