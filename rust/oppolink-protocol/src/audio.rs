@@ -15,12 +15,17 @@ use oppolink_codec as codec;
 /// variants pin the libopus error at the call site; the structured ones
 /// surface PCM-length and short-frame mistakes the Kotlin side can format
 /// without parsing free-form strings.
+///
+/// NB: field is named `detail` rather than `message` — UniFFI's generated
+/// Kotlin maps each variant to a class extending `Throwable` and a field
+/// called `message` would shadow `Throwable.message` without the
+/// `override` modifier the codegen does not emit.
 #[derive(thiserror::Error, Debug, uniffi::Error)]
 pub enum AudioError {
-    #[error("libopus encoder error: {message}")]
-    Encoder { message: String },
-    #[error("libopus decoder error: {message}")]
-    Decoder { message: String },
+    #[error("libopus encoder error: {detail}")]
+    Encoder { detail: String },
+    #[error("libopus decoder error: {detail}")]
+    Decoder { detail: String },
     #[error("PCM frame must be exactly {expected} samples, got {actual}")]
     BadPcmLen { expected: u32, actual: u32 },
     #[error("frame too short to parse header (need {needed}, got {got})")]
@@ -30,8 +35,8 @@ pub enum AudioError {
 impl From<codec::CodecError> for AudioError {
     fn from(e: codec::CodecError) -> Self {
         match e {
-            codec::CodecError::OpusEncoder(m) => Self::Encoder { message: m },
-            codec::CodecError::OpusDecoder(m) => Self::Decoder { message: m },
+            codec::CodecError::OpusEncoder(m) => Self::Encoder { detail: m },
+            codec::CodecError::OpusDecoder(m) => Self::Decoder { detail: m },
             codec::CodecError::PcmFrameLen { expected, actual } => {
                 Self::BadPcmLen { expected, actual }
             }

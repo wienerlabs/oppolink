@@ -84,6 +84,15 @@ The `:core-protocol:preBuild` task depends on both steps above. See `android/cor
   generated-source producers (UniFFI bindgen, codegen, etc.) into every
   `compile*Kotlin` task via an `afterEvaluate { tasks.matching {…}.configureEach { dependsOn(…) } }`
   block in addition to the `preBuild` hook.
+- **Never name a UniFFI error variant field `message`.** UniFFI's generated
+  Kotlin maps each variant to a subclass of `Throwable`; a field called
+  `message` shadows `Throwable.message` without an `override` modifier and
+  the Kotlin compiler rejects the resulting class. Use `detail`, `reason`,
+  `cause`, etc.
+- **`audiopus_sys` (transitively pulled in by `opus = "0.3.x"`) ships a
+  libopus `cmake_minimum_required(2.x)` that CMake 4.x refuses to honor.**
+  Pin `CMAKE_POLICY_VERSION_MINIMUM = "3.5"` in `rust/.cargo/config.toml`
+  so every cargo invocation (host + cargo-ndk cross) inherits it.
 
 ## Useful pointers
 - Android L2CAP CoC docs: <https://developer.android.com/develop/connectivity/bluetooth/ble/connect-gatt-server#l2cap-channels>
