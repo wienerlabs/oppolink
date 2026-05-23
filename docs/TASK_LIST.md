@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-21 after Sprint 1 D4 shipped.
+Last updated: 2026-05-21 after Sprint 2 D5 shipped.
 
 ---
 
@@ -17,6 +17,7 @@ Last updated: 2026-05-21 after Sprint 1 D4 shipped.
 | D2 | BLE discovery (advertise + scan + UI) | `f41ae3c` | green | required 6 CI fixes — see "Burns" below |
 | D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
 | D4 | L2CAP echo test, RTT <30 ms median | `6f7936a` | green first-shot | echo loops on dedicated Thread; real p50/p95 needs hardware |
+| D5 | One-way audio MVP (capture → Opus → L2CAP → playback) | _pending — see commit row updated post-CI_ | _watch_ | libopus via `opus` 0.3.1; `.cargo/config.toml` pins `CMAKE_POLICY_VERSION_MINIMUM=3.5` |
 
 ---
 
@@ -68,16 +69,41 @@ After two Tier 1 devices (Reno 11 / Find X7) are paired:
 
 ## Sprint 2 — Audio MVP (Week 2)
 
-### D5 — One-way audio
-- Pipeline: `AudioRecord (VOICE_COMMUNICATION, 16 kHz mono, 20 ms)` → Opus
-  encode (`OPUS_APPLICATION_VOIP`, 24 kbps, complexity 5, FEC on, DTX off
-  for v1) → framing header `[seq:u16 | ts:u16]` → L2CAP TX. Receiver path
-  mirrors.
-- Move all Opus FFI into `rust/oppolink-codec`. UniFFI export `Encoder` +
-  `Decoder` opaque types. Pre-allocate scratch buffers in `prepare()`.
-- New module-level rule: **no allocations on the 20 ms tick** once
-  `call.start()` returns. Comment every allocation that does happen with
-  why it's safe (cold-start only).
+### D5 — One-way audio (shipped)
+
+What landed:
+- Rust `oppolink-codec`: `VoipEncoder` / `VoipDecoder` over the
+  `opus = "0.3.1"` crate. 16 kHz mono, 20 ms frame, 24 kbps CBR,
+  complexity 5, FEC on, DTX off. Pre-allocated scratch buffers — the
+  hot path encoder/decoder calls never allocate after construction. Six
+  unit tests covering frame header roundtrip, silence/sine roundtrips,
+  PLC, and PCM-length guard. Workspace at 34/34.
+- Rust `oppolink-protocol::audio`: UniFFI Object wrappers around the
+  codec types, `AudioFrameHeader` record, `build_audio_frame` /
+  `parse_audio_frame`, constants accessors. `AudioError` re-shaped from
+  `CodecError` for UniFFI serializability.
+- `rust/.cargo/config.toml`: `CMAKE_POLICY_VERSION_MINIMUM = "3.5"`
+  because `audiopus_sys`' vendored libopus has `cmake_minimum_required(2.x)`
+  and CMake 4.x refuses to honor it otherwise.
+- Kotlin `:core-audio`: `AudioCapture` (VOICE_COMMUNICATION,
+  16 kHz / mono / 16-bit, AEC/NS/AGC effects with `isAvailable()`
+  guards), `AudioPlayback` (USAGE_VOICE_COMMUNICATION,
+  PERFORMANCE_MODE_LOW_LATENCY, MODE_STREAM).
+- Kotlin `:core-bluetooth`: `PeerConnector.runCall(peer, durationMs)`
+  on `OppoLinkCallClient` thread with `Process.THREAD_PRIORITY_URGENT_AUDIO`;
+  capture → encode → length-prefix → send loop. Server `OppoLinkAccept`
+  thread now decodes + plays instead of mirroring bytes. The D4 echo
+  path is retired in the UI but the Rust helpers remain for ad-hoc
+  latency probing.
+- Kotlin `:app`: `ConnectionScreen` swaps "Run echo" for "Start one-way
+  call"; new `InCallCard` (frames sent/received + PHY chip) and
+  `CallEndedCard`. `ConnectionViewModel.startCall(peer)`.
+- Docs: `PROTOCOL.md` "Audio frame" section locked; v1 ships
+  **without AEAD** — Sprint 4 D13 reshapes the frame to wrap
+  ChaCha20-Poly1305 around the Opus payload.
+
+Hardware testing: emulator has no L2CAP CoC; two Reno-class devices
+needed to validate end-to-end audio + AEC.
 
 ### D6 — Full-duplex
 - Capture / TX / RX / playback all on dedicated threads. Verify with

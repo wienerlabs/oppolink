@@ -114,21 +114,51 @@ side simply mirrors each frame back to the sender; the client measures
 - Both sides MUST run the I/O on dedicated `Thread`s — coroutine dispatcher
   jitter is not tolerable on the 20 ms audio tick we're rehearsing for.
 
-## Audio frame (over L2CAP CoC)
+## Audio frame (Sprint 2 D5, locked)
+
+The on-wire framing v1 ships **without AEAD** — the 12-byte nonce / 16-byte
+tag fields described below land in Sprint 4 D13 once ECDH key agreement is
+in. Until then the audio frame is just the framing header plus the raw
+Opus packet:
 
 ```
 ┌─────────────────────────────────────────────────────┐
+│ len:        u16 big-endian   (length of [header | opus])  ← L2CAP delimiter
+├─────────────────────────────────────────────────────┤
+│ seq:        u16 big-endian   (frame index, wraps every 65 536)             │
+│ ts:         u16 big-endian   (units of 20 ms; wraps every ~21 min)         │
+│ opus:       variable          (libopus VoIP packet)                        │
+└─────────────────────────────────────────────────────┘
+```
+
+- The leading `u16` `len` is the L2CAP-level delimiter so the receiver
+  knows exactly how many bytes the next frame consumes. It is not part of
+  the framed payload that Rust parses.
+- `ts` wraps every ~21 minutes — receivers MUST tolerate wrap-around.
+- `seq` increments per peer-direction, starting at 0 on session start. The
+  receiver uses `seq` for jitter buffer ordering and PLC trigger detection.
+- Opus is configured for VoIP: 16 kHz mono, 20 ms frame, 24 kbps,
+  complexity 5, FEC on, DTX off. Source of truth is
+  `rust/oppolink-codec/src/lib.rs`.
+
+### Sprint 4 D13 upgrade path
+
+Once ECDH lands, the audio frame becomes:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ len:        u16 big-endian                          │
+├─────────────────────────────────────────────────────┤
 │ seq:        u16 big-endian                          │
-│ ts:         u16 big-endian   (units of 20 ms)       │
+│ ts:         u16 big-endian                          │
 │ nonce:      [u8; 12]         (ChaCha20-Poly1305)    │
 │ ciphertext: variable          (encrypted Opus)      │
 │ tag:        [u8; 16]                                │
 └─────────────────────────────────────────────────────┘
 ```
 
-- `ts` wraps every ~21 minutes — receivers MUST tolerate wrap-around.
-- `seq` increments per peer-direction, starting at 0 on session start. The
-  receiver uses `seq` for jitter buffer ordering and PLC trigger detection.
+The version byte in the handshake gates the upgrade — peers must not mix
+v1-cleartext with v1-AEAD frames inside a single session.
 
 ## Key schedule
 

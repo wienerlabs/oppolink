@@ -11,10 +11,12 @@
 
 uniffi::setup_scaffolding!();
 
+mod audio;
 mod echo;
 mod handshake;
 mod manufacturer;
 
+pub use audio::{AudioError, AudioFrameHeader, ParsedAudioFrame, VoipDecoder, VoipEncoder};
 pub use echo::{EchoStats, ECHO_PACKET_LEN, ECHO_PAYLOAD_LEN, ECHO_SEQ_PREFIX_LEN};
 pub use handshake::{
     decide_role, HandshakeError, HandshakeMessage, Role, HANDSHAKE_MAGIC, HANDSHAKE_MAX_LEN,

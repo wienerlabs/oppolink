@@ -27,6 +27,7 @@ android {
 
 dependencies {
     api(project(":core-protocol"))
+    api(project(":core-audio"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
 

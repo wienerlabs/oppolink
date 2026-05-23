@@ -14,7 +14,6 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -29,7 +28,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import link.oppolink.bluetooth.ConnectionState
 import link.oppolink.bluetooth.Peer
-import uniffi.oppolink_protocol.EchoStats
 
 @Composable
 fun ConnectionScreen(
@@ -54,19 +52,21 @@ fun ConnectionScreen(
         ) {
             Header(peer)
             StateCard(state, modifier = Modifier.fillMaxWidth())
-            if (state is ConnectionState.EchoInProgress) {
-                EchoProgress(state as ConnectionState.EchoInProgress)
-            }
-            if (state is ConnectionState.EchoCompleted) {
-                EchoResultCard(
-                    completed = state as ConnectionState.EchoCompleted,
+            when (state) {
+                is ConnectionState.InCall -> InCallCard(
+                    inCall = state as ConnectionState.InCall,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                is ConnectionState.CallEnded -> CallEndedCard(
+                    ended = state as ConnectionState.CallEnded,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                else -> Unit
             }
             Spacer(Modifier.height(8.dp))
             Footer(
                 state = state,
-                onRunEcho = { viewModel.runEcho(peer) },
+                onStartCall = { viewModel.startCall(peer) },
                 onCancel = {
                     viewModel.cancel()
                     onBack()
@@ -119,27 +119,7 @@ private fun StateCard(state: ConnectionState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EchoProgress(state: ConnectionState.EchoInProgress) {
-    val fraction = if (state.total == 0) 0f else state.progress.toFloat() / state.total
-    Column {
-        Text(
-            text = "Echo ${state.progress + 1} of ${state.total}",
-            style = MaterialTheme.typography.labelLarge,
-        )
-        Spacer(Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { fraction },
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
-private fun EchoResultCard(
-    completed: ConnectionState.EchoCompleted,
-    modifier: Modifier = Modifier,
-) {
-    val s: EchoStats = completed.stats
+private fun InCallCard(inCall: ConnectionState.InCall, modifier: Modifier = Modifier) {
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -147,21 +127,19 @@ private fun EchoResultCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("L2CAP echo", style = MaterialTheme.typography.titleMedium)
+                Text("Call in progress", style = MaterialTheme.typography.titleMedium)
                 AssistChip(
                     onClick = {},
-                    label = { Text(phyLabel(completed.negotiatedPhy)) },
+                    label = { Text(phyLabel(inCall.negotiatedPhy)) },
                     colors = AssistChipDefaults.assistChipColors(),
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Stat("p50", s.p50Ms)
-            Stat("p95", s.p95Ms)
-            Stat("min", s.minMs)
-            Stat("max", s.maxMs)
+            Stat("frames sent", inCall.framesSent)
+            Stat("frames received", inCall.framesReceived)
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "${s.sampleCount} samples · target p50 < 30 ms on LE 2M",
+                "PSM ${inCall.psm} · 20 ms Opus VoIP frames over L2CAP",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -170,39 +148,54 @@ private fun EchoResultCard(
 }
 
 @Composable
-private fun Stat(name: String, ms: Double) {
+private fun CallEndedCard(ended: ConnectionState.CallEnded, modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Call ended", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Stat("frames sent", ended.framesSent)
+            Stat("frames received", ended.framesReceived)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "PSM ${ended.psm} closed",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Stat(name: String, value: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(name, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            text = String.format("%.1f ms", ms),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Text(value.toString(), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 @Composable
 private fun Footer(
     state: ConnectionState,
-    onRunEcho: () -> Unit,
+    onStartCall: () -> Unit,
     onCancel: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val canRunEcho =
-        state is ConnectionState.PsmExchanged || state is ConnectionState.EchoCompleted
+    val canStartCall =
+        state is ConnectionState.PsmExchanged || state is ConnectionState.CallEnded
     val isTerminal = state is ConnectionState.PsmExchanged ||
-        state is ConnectionState.EchoCompleted ||
+        state is ConnectionState.CallEnded ||
         state is ConnectionState.Failed ||
         state is ConnectionState.Idle
 
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (canRunEcho) {
-                Button(onClick = onRunEcho) {
+            if (canStartCall) {
+                Button(onClick = onStartCall) {
                     Text(
-                        if (state is ConnectionState.EchoCompleted) "Run echo again" else "Run echo",
+                        if (state is ConnectionState.CallEnded) "Call again" else "Start one-way call",
                     )
                 }
             }
@@ -244,14 +237,14 @@ private fun describe(state: ConnectionState): Triple<String, String, Boolean> = 
         "Negotiated ${phyLabel(state.negotiatedPhy)} · ready to open L2CAP.",
         false,
     )
-    is ConnectionState.EchoInProgress -> Triple(
-        "Echo in progress",
-        "Sending 1 KB packets over L2CAP CoC at PSM ${state.psm}…",
+    is ConnectionState.InCall -> Triple(
+        "Call live",
+        "Capturing → Opus → L2CAP → playback on peer.",
         false,
     )
-    is ConnectionState.EchoCompleted -> Triple(
-        "Echo complete",
-        "L2CAP socket closed after ${state.stats.sampleCount} round-trips.",
+    is ConnectionState.CallEnded -> Triple(
+        "Call complete",
+        "L2CAP socket closed after ${state.framesSent} sent frames.",
         false,
     )
     is ConnectionState.Failed -> Triple(

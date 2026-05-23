@@ -12,11 +12,10 @@ import link.oppolink.bluetooth.Peer
 import link.oppolink.bluetooth.PeerConnector
 
 /**
- * Drives the Sprint 1 D3 connection screen and the D4 L2CAP echo test.
- *
- * The shared [PeerConnector] singleton owns the GATT session + L2CAP server
- * socket and publishes the live state; this VM only coordinates [start] /
- * [runEcho] / [cancel] calls and threads the [Peer] argument through.
+ * Drives the Sprint 1 D3 connection screen and the Sprint 2 D5 one-way
+ * call. The shared [PeerConnector] singleton owns the GATT session +
+ * L2CAP server socket and publishes the live state; this VM only
+ * coordinates [start] / [startCall] / [cancel] calls.
  */
 @HiltViewModel
 class ConnectionViewModel @Inject constructor(
@@ -34,13 +33,12 @@ class ConnectionViewModel @Inject constructor(
         }
     }
 
-    /** Kick off the L2CAP echo test once handshake (PsmExchanged) is done. */
-    fun runEcho(peer: Peer) {
+    /** Kick off the one-way call once handshake (PsmExchanged) is done. */
+    fun startCall(peer: Peer) {
         inflight?.cancel()
         inflight = viewModelScope.launch {
-            runCatching { connector.runEchoTest(peer) }
-                // PeerConnector pushes its own Failed state on error — the
-                // result of this launch is informational only.
+            runCatching { connector.runCall(peer) }
+                // PeerConnector pushes its own Failed state on error.
                 .onFailure { /* state flow already reflects failure */ }
         }
     }

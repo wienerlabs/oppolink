@@ -41,6 +41,15 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 2 D5 scope (shipped)
+- `PeerConnector.runCall(peer, durationMs)` — capture → Opus encode →
+  length-prefixed audio frame → L2CAP TX on `OppoLinkCallClient`
+  thread at `URGENT_AUDIO`.
+- Server `OppoLinkAccept` thread retired the D4 echo loop; now decodes
+  Opus and writes PCM to `AudioPlayback`.
+- `ConnectionState.InCall` (frame counters + PHY) and
+  `ConnectionState.CallEnded`.
+
 ## Sprint 1 D4 scope (shipped)
 - `L2capChannel` — `AutoCloseable` wrapper around `BluetoothSocket` with
   blocking `send` / `receiveExact`. Owned by exactly one thread.

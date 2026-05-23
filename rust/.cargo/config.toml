@@ -1,0 +1,7 @@
+# audiopus_sys ships a libopus CMakeLists.txt with cmake_minimum_required(2.x),
+# which CMake 4.x refuses to honor without an explicit policy bump. Setting
+# this env var here keeps every Cargo invocation under the workspace
+# (including cargo-ndk cross-compiles) compatible with the bundled libopus
+# without having to touch the upstream crate.
+[env]
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
