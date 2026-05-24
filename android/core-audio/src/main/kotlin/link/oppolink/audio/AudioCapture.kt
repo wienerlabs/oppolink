@@ -128,6 +128,33 @@ class AudioCapture : Closeable {
         }
     }
 
+    /**
+     * Toggle mute. `true` stops the underlying `AudioRecord` (the mic
+     * truly goes off, saving battery on a push-to-talk call). `false`
+     * resumes recording. Idempotent — calling twice with the same value
+     * is a no-op, so the Tx loop can call this on every press / release
+     * without ceremony.
+     *
+     * Hardware effects (AEC / NS / AGC) survive the stop/start cycle —
+     * they're attached to the `AudioRecord` session id which doesn't
+     * change.
+     */
+    fun setMuted(muted: Boolean) {
+        val rec = record ?: return
+        try {
+            val recording = rec.recordingState == android.media.AudioRecord.RECORDSTATE_RECORDING
+            if (muted && recording) {
+                rec.stop()
+                Log.d(TAG, "mic muted")
+            } else if (!muted && !recording) {
+                rec.startRecording()
+                Log.d(TAG, "mic unmuted")
+            }
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "setMuted($muted) ignored: ${e.message}")
+        }
+    }
+
     override fun close() {
         runCatching { aec?.release() }
         runCatching { ns?.release() }

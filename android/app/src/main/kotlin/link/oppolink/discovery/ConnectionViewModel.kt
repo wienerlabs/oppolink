@@ -54,6 +54,15 @@ class ConnectionViewModel @Inject constructor(
         )
     }
 
+    /**
+     * Sprint 4 D12 — toggle the local mic. Plumbed through PeerConnector
+     * which owns the AudioCapture lifecycle. Idempotent; safe to call on
+     * every press / release of the push-to-talk button.
+     */
+    fun setMuted(muted: Boolean) {
+        connector.setMuted(muted)
+    }
+
     fun cancel() {
         handshakeJob?.cancel()
         handshakeJob = null

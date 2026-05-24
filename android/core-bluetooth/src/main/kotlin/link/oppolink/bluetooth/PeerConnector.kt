@@ -76,6 +76,15 @@ interface PeerConnector {
      */
     suspend fun runCall(peer: Peer, durationMs: Long? = null)
 
+    /**
+     * Sprint 4 D12 — toggle the local mic. `true` truly stops the
+     * underlying `AudioRecord` (the radio + CPU savings are real on a
+     * push-to-talk call), and the Tx thread skips its send leg until
+     * the flag flips back to `false`. The L2CAP socket stays open the
+     * whole time, so unmuting resumes inside one tick.
+     */
+    fun setMuted(muted: Boolean)
+
     /** Abort an in-flight call. */
     fun cancel()
 
@@ -99,6 +108,15 @@ internal class RealPeerConnector(
     private var serverHost: GattServerHost? = null
     private var connectJob: Job? = null
     private var passiveAcceptThread: Thread? = null
+
+    /**
+     * Sprint 4 D12 — push-to-talk mute flag. Owned at instance scope so
+     * the UI can toggle it at any moment without having to thread the
+     * value through `runCall`. The Tx thread reads it once per tick.
+     */
+    private val muted = java.util.concurrent.atomic.AtomicBoolean(false)
+    /** The active capture session, set by [runDuplexCall], cleared on tear-down. */
+    private val currentCapture = AtomicReference<AudioCapture?>(null)
 
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -195,11 +213,17 @@ internal class RealPeerConnector(
         }
     }
 
+    override fun setMuted(muted: Boolean) {
+        this.muted.set(muted)
+        currentCapture.get()?.setMuted(muted)
+    }
+
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun cancel() {
         connectJob?.cancel()
         connectJob = null
+        muted.set(false)
         _state.value = ConnectionState.Idle
     }
 
@@ -313,6 +337,9 @@ internal class RealPeerConnector(
         try {
             capture.prepare(); capture.start()
             playback.prepare(); playback.start()
+            currentCapture.set(capture)
+            // Apply any mute state the UI may have flipped before runCall fired.
+            capture.setMuted(muted.get())
 
             outer@ while (true) {
                 val reason = runDuplexSession(
@@ -353,6 +380,7 @@ internal class RealPeerConnector(
                 }
             }
         } finally {
+            currentCapture.set(null)
             runCatching { capture.stop() }; runCatching { capture.close() }
             runCatching { playback.stop() }; runCatching { playback.close() }
         }
@@ -495,6 +523,31 @@ internal class RealPeerConnector(
         val deadlineNs: Long = callDeadlineNs ?: Long.MAX_VALUE
 
         while (running.get() && System.nanoTime() < deadlineNs) {
+            val isMuted = muted.get()
+            capture.setMuted(isMuted)
+
+            if (isMuted) {
+                // Mic is off. Don't read (AudioRecord is stopped anyway),
+                // don't send. Park for a frame and keep advertising the
+                // muted state to the UI so the indicator stays accurate.
+                _state.value = ConnectionState.InCall(
+                    role = role,
+                    peer = peer,
+                    psm = psm,
+                    negotiatedPhy = phy,
+                    framesSent = framesSent.get(),
+                    framesReceived = framesReceived.get(),
+                    muted = true,
+                )
+                try {
+                    Thread.sleep(MUTED_TICK_MS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+                continue
+            }
+
             val read = capture.readFrame(pcm)
             if (read < pcm.size) {
                 Log.w(TAG, "AudioRecord underrun: $read/${pcm.size}; stopping Tx")
@@ -533,6 +586,7 @@ internal class RealPeerConnector(
                 negotiatedPhy = phy,
                 framesSent = s,
                 framesReceived = framesReceived.get(),
+                muted = false,
             )
         }
     }, "OppoLinkCallTx").apply {
@@ -647,5 +701,8 @@ internal class RealPeerConnector(
 
         /** Polling interval inside [attemptReconnect]. */
         const val RECONNECT_BACKOFF_MS = 500L
+
+        /** Sprint 4 D12 — sleep duration per Tx tick while the mic is muted. */
+        const val MUTED_TICK_MS = 20L
     }
 }

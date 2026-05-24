@@ -148,6 +148,12 @@ Opus packet:
   re-run. The wire stream resumes with the next `seq` so the peer's
   jitter buffer treats the gap as PLC frames. If the reconnect window
   (5 s) elapses, the session ends and a fresh handshake is needed.
+- **Push-to-talk** (Sprint 4 D12): when the local user mutes (PTT off
+  by default, or PTT-mode released) the Tx loop stops `AudioRecord`
+  and skips its send leg. **No frames are sent** during mute periods —
+  the wire format is unchanged but the peer sees `seq` gaps that the
+  jitter buffer treats as PLC. Unmuting resumes inside one tick and
+  the peer's jitter PLC tail naturally fills the seam.
 - `ts` wraps every ~21 minutes — receivers MUST tolerate wrap-around.
 - `seq` increments per peer-direction, starting at 0 on session start. The
   receiver uses `seq` for jitter buffer ordering and PLC trigger detection.

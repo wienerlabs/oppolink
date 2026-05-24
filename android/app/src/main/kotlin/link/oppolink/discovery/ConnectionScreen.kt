@@ -1,5 +1,6 @@
 package link.oppolink.discovery
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,17 +13,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,9 +45,22 @@ fun ConnectionScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // Sprint 4 D12 — push-to-talk mode toggle. UI-local state; the
+    // ViewModel only sees `setMuted(true|false)` calls. When PTT mode
+    // is enabled we auto-mute and surface a hold-to-talk button.
+    var pttMode by remember { mutableStateOf(false) }
+    LaunchedEffect(pttMode) {
+        // Entering PTT mode auto-mutes. Leaving PTT mode unmutes. Both
+        // are intentional defaults; the user can still tap End call.
+        viewModel.setMuted(pttMode)
+    }
+
     DisposableEffect(peer.bdAddress) {
         viewModel.start(peer)
-        onDispose { viewModel.cancel() }
+        onDispose {
+            viewModel.setMuted(false)
+            viewModel.cancel()
+        }
     }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
@@ -53,10 +74,20 @@ fun ConnectionScreen(
             Header(peer)
             StateCard(state, modifier = Modifier.fillMaxWidth())
             when (state) {
-                is ConnectionState.InCall -> InCallCard(
-                    inCall = state as ConnectionState.InCall,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                is ConnectionState.InCall -> {
+                    InCallCard(
+                        inCall = state as ConnectionState.InCall,
+                        pttMode = pttMode,
+                        onPttModeChange = { pttMode = it },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (pttMode) {
+                        HoldToTalkButton(
+                            onHoldStart = { viewModel.setMuted(false) },
+                            onHoldEnd = { viewModel.setMuted(true) },
+                        )
+                    }
+                }
                 is ConnectionState.CallEnded -> CallEndedCard(
                     ended = state as ConnectionState.CallEnded,
                     modifier = Modifier.fillMaxWidth(),
@@ -120,7 +151,12 @@ private fun StateCard(state: ConnectionState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun InCallCard(inCall: ConnectionState.InCall, modifier: Modifier = Modifier) {
+private fun InCallCard(
+    inCall: ConnectionState.InCall,
+    pttMode: Boolean,
+    onPttModeChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -129,11 +165,26 @@ private fun InCallCard(inCall: ConnectionState.InCall, modifier: Modifier = Modi
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Call in progress", style = MaterialTheme.typography.titleMedium)
-                AssistChip(
-                    onClick = {},
-                    label = { Text(phyLabel(inCall.negotiatedPhy)) },
-                    colors = AssistChipDefaults.assistChipColors(),
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (inCall.muted) {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("Muted") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                labelColor = MaterialTheme.colorScheme.onErrorContainer,
+                            ),
+                        )
+                    }
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(phyLabel(inCall.negotiatedPhy)) },
+                        colors = AssistChipDefaults.assistChipColors(),
+                    )
+                }
             }
             Spacer(Modifier.height(8.dp))
             Stat("frames sent", inCall.framesSent)
@@ -144,7 +195,61 @@ private fun InCallCard(inCall: ConnectionState.InCall, modifier: Modifier = Modi
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text("Push-to-talk", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Mic off unless you hold the button below.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = pttMode, onCheckedChange = onPttModeChange)
+            }
         }
+    }
+}
+
+@Composable
+private fun HoldToTalkButton(
+    onHoldStart: () -> Unit,
+    onHoldEnd: () -> Unit,
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val label = if (isPressed) "Speaking…" else "Hold to talk"
+    Button(
+        onClick = { /* gestures wired below */ },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        isPressed = true
+                        onHoldStart()
+                        try {
+                            awaitRelease()
+                        } finally {
+                            isPressed = false
+                            onHoldEnd()
+                        }
+                    },
+                )
+            },
+        colors = if (isPressed) {
+            ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            ButtonDefaults.buttonColors()
+        },
+    ) {
+        Text(label, style = MaterialTheme.typography.titleMedium)
     }
 }
 

@@ -41,6 +41,20 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 4 D12 scope (shipped)
+- `PeerConnector.setMuted(boolean)` — instance-level `AtomicBoolean`
+  + `AtomicReference<AudioCapture>` so the UI can toggle the mic at
+  any time, even before `runCall` has spun up its threads.
+- Tx loop reads `muted` once per tick. While muted: emits an
+  `InCall(muted = true)` state update, parks 20 ms, skips encode/send.
+  No frames hit the wire — the peer's jitter buffer PLCs through the
+  silence and unmute is seamless.
+- `AudioCapture.setMuted(boolean)` calls the underlying
+  `AudioRecord.stop()` / `startRecording()` so the mic hardware truly
+  goes off (battery + ALSA buffer drained). Hardware effects (AEC /
+  NS / AGC) survive the cycle because they're attached to the
+  `AudioRecord` session id.
+
 ## Sprint 3 D11 scope (shipped)
 - `ConnectionState.Reconnecting(role, peer, psm, attempt)` — new
   variant for the 5-second reopen window.

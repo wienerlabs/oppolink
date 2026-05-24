@@ -46,6 +46,11 @@ sealed interface ConnectionState {
      * the server thread is receiving → decoding → playing. `framesSent`
      * and `framesReceived` tick on every 20 ms boundary so the UI can
      * surface a heartbeat.
+     *
+     * `muted` (Sprint 4 D12) is `true` when the local mic is off — Tx
+     * keeps the L2CAP socket open but skips encode/send while
+     * `AudioRecord` is stopped. Used by push-to-talk and the future
+     * "mute me" UI button.
      */
     data class InCall(
         val role: Role,
@@ -54,6 +59,7 @@ sealed interface ConnectionState {
         val negotiatedPhy: Int,
         val framesSent: Int,
         val framesReceived: Int,
+        val muted: Boolean = false,
     ) : ConnectionState
 
     /**

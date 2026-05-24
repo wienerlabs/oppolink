@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-24 after **Sprint 3 closed** (D8 + D9 + D10 + D11; CI verify deferred — wienerlabs org Actions billing).
+Last updated: 2026-05-24 after Sprint 4 D12 shipped (CI verify deferred — wienerlabs org Actions billing).
 
 ---
 
@@ -23,7 +23,8 @@ Last updated: 2026-05-24 after **Sprint 3 closed** (D8 + D9 + D10 + D11; CI veri
 | D8 | Adaptive jitter buffer + PLC | `3938a69` | _billing-blocked_ | `oppolink-jitter` crate + UniFFI Object; Rx → JB → Play thread split |
 | D9 | Foreground service + persistent notification | `58ff599` | _billing-blocked_ | survives screen-off; "End call" notification action; mm:ss ticker |
 | D10 | ColorOS battery whitelist wizard | `b615cc2` | _billing-blocked_ | reflective version detect; first-run wizard; OEM intents fall back to platform Settings |
-| D11 | Reconnect on drop (5 s window) | _pending — see commit row_ | _billing-blocked_ | client reopen loop on cached PSM; server accept loop |
+| D11 | Reconnect on drop (5 s window) | `4b56c77` | _billing-blocked_ | client reopen loop on cached PSM; server accept loop |
+| D12 | Push-to-talk mode | _pending — see commit row_ | _billing-blocked_ | mic hardware off via AudioRecord.stop; PTT toggle + hold-to-talk button |
 
 ---
 
@@ -284,9 +285,37 @@ Open follow-ups:
 
 ## Sprint 4 — Release (Week 4)
 
-### D12 — Push-to-talk mode
-- Settings toggle. When PTT is on, `AudioRecord` stays prepared but only
-  emits frames while the button is held. Saves battery on quiet calls.
+### D12 — Push-to-talk mode (shipped)
+
+What landed:
+- `AudioCapture.setMuted(boolean)` flips the underlying `AudioRecord`
+  between `startRecording()` and `stop()`. The mic hardware actually
+  powers down — real battery + ALSA savings — and the AEC / NS / AGC
+  effects survive the cycle (they hang off the session id which
+  doesn't change).
+- `PeerConnector.setMuted(boolean)` updates an instance-level
+  `AtomicBoolean` + propagates to whichever `AudioCapture` is in
+  scope (held via `AtomicReference` set at `runDuplexCall` start /
+  cleared at finally).
+- Tx loop reads `muted` once per tick. Muted ticks emit
+  `InCall(muted = true)`, sleep 20 ms, skip encode + send. The peer's
+  jitter buffer PLCs through the silent gap; unmute resumes inside
+  one tick.
+- `ConnectionState.InCall.muted: Boolean` (defaults false).
+- UI: `ConnectionScreen` keeps a local `pttMode: Boolean`. The Switch
+  inside `InCallCard` toggles it; a `LaunchedEffect` mirrors it onto
+  `viewModel.setMuted`. When PTT mode is on, a tall `HoldToTalkButton`
+  uses `pointerInput { detectTapGestures(onPress = …, awaitRelease) }`
+  to setMuted(false) on press + setMuted(true) on release.
+  `InCallCard` also surfaces a red "Muted" assist chip while the wire
+  is silent.
+
+Open follow-ups:
+- Hardware-side: confirm the Reno 11 actually drops the mic LED while
+  muted — some OEMs only nominally stop the radio.
+- Symmetric PTT: today only the local mic can be muted. We could
+  surface a "remote muted" indicator if the peer's stream stalls for
+  >N ms (the jitter buffer's `late_arrival_count` could feed this).
 
 ### D13 — Encryption (Curve25519 + ChaCha20-Poly1305)
 - ECDH key agreement at handshake. Real bytes go into the pubkey field
