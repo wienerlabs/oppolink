@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-24 after Sprint 3 D9 shipped (CI verify deferred — wienerlabs org Actions billing).
+Last updated: 2026-05-24 after Sprint 3 D10 shipped (CI verify deferred — wienerlabs org Actions billing).
 
 ---
 
@@ -21,7 +21,8 @@ Last updated: 2026-05-24 after Sprint 3 D9 shipped (CI verify deferred — wiene
 | D6 | Full-duplex (Tx + Rx threads per side) | `879d901` | _billing-blocked_ | wienerlabs org Actions billing failed; pure code-side ship complete |
 | D7 | AEC validation Reno 11 / Find X7 | _hardware-pending_ | n/a | speaker-phone howl test; no code change required |
 | D8 | Adaptive jitter buffer + PLC | `3938a69` | _billing-blocked_ | `oppolink-jitter` crate + UniFFI Object; Rx → JB → Play thread split |
-| D9 | Foreground service + persistent notification | _pending — see commit row_ | _billing-blocked_ | survives screen-off; "End call" notification action; mm:ss ticker |
+| D9 | Foreground service + persistent notification | `58ff599` | _billing-blocked_ | survives screen-off; "End call" notification action; mm:ss ticker |
+| D10 | ColorOS battery whitelist wizard | _pending — see commit row_ | _billing-blocked_ | reflective version detect; first-run wizard; OEM intents fall back to platform Settings |
 
 ---
 
@@ -213,14 +214,39 @@ Open follow-ups:
   still runs but the foreground status indicator goes through the
   system "ongoing call" path instead of the custom notification.
 
-### D10 — ColorOS battery whitelist wizard
-- First-run flow in `:coloros-compat`. Detect ColorOS version
-  (`Build.DISPLAY` + `SystemProperties.get("ro.build.version.opporom")`).
-- Per-version intent table → Startup Manager, Battery Optimization,
-  Floating Window, Auto-Launch. Wrap every `startActivity` with
-  `try/catch (ActivityNotFoundException)` + generic settings fallback.
-- Ship version-tagged screenshots so the wizard text matches the actual
-  UI the user sees (ColorOS 13, 14, 15).
+### D10 — ColorOS battery whitelist wizard (shipped)
+
+What landed:
+- `:coloros-compat/ColorOsSettings`:
+  - `isColorOs()` heuristic via `Build.MANUFACTURER` + reflective
+    `SystemProperties.get("ro.build.version.opporom")` (with `…oplusrom`
+    fallback for OnePlus / Realme).
+  - `colorOsVersion()` display string for the wizard chip.
+  - `intentFor(context, capability)` returns the first candidate Intent
+    the PackageManager actually resolves. Component names cover ColorOS
+    13 → 15 plus legacy `com.oppo.safe`. Falls back to
+    `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` / generic
+    application-details on no match.
+- `:app/.../setup`:
+  - `SetupPreferences` SharedPreferences wrapper, single key
+    `coloros_setup_complete`, Hilt `@Singleton`.
+  - `SetupViewModel.openCapability` wraps `startActivity` in
+    `try/catch (ActivityNotFoundException | SecurityException)` — OEM
+    intent rot is the norm, not the exception.
+  - `ColorOsSetupScreen` (Compose) — four `CapabilityCard`s + "Skip" /
+    "All set" footer. Skipping and completing both write the same
+    "wizard done" flag; the wizard never re-appears.
+- `MainScreen` flow: `PermissionGate → setup gate → DiscoveryScreen /
+  ConnectionScreen`. Stock Android short-circuits the gate via
+  `isColorOs()`.
+
+Open follow-ups:
+- Per-version screenshot guidance (ColorOS 13 / 14 / 15) — the spec
+  asked for it but the assets need to come from real device captures.
+  Track separately once we have Tier 1 devices in hand.
+- Settings entry-point to re-open the wizard from inside the app
+  (currently one-shot). Add when there's a settings screen for the
+  v1.x release polish pass.
 
 ### D11 — Reconnect on drop
 - If the L2CAP socket breaks during a call, attempt a single reconnect
