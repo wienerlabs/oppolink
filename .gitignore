@@ -21,10 +21,12 @@ android/*/build/
 android/.kotlin/
 android/local.properties
 
-# Keystores — never commit
+# Keystores + release-signing — never commit
 *.jks
 *.keystore
 keystore.properties
+signing.properties
+release.jks
 
 # Generated UniFFI bindings (regenerated on every build)
 android/core-protocol/src/main/kotlin/uniffi/

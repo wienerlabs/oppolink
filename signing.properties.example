@@ -1,0 +1,21 @@
+# OppoLink release signing — DO NOT commit the populated copy.
+#
+# Copy this file to `signing.properties` at the repo root and fill in the
+# real values. `.gitignore` already excludes `signing.properties` and
+# `*.jks` / `*.keystore`.
+#
+# To generate a release keystore (one-shot, kept offline):
+#
+#   keytool -genkey -v \
+#     -keystore oppolink-release.jks \
+#     -keyalg RSA -keysize 4096 -validity 36500 \
+#     -alias oppolink
+#
+# Sprint 4 D15: this file is consumed by `app/build.gradle.kts`'s
+# `signingConfigs.release` block. CI uses environment variables of the
+# same names instead — see `.github/workflows/release.yml`.
+
+RELEASE_STORE_FILE=/absolute/path/to/oppolink-release.jks
+RELEASE_STORE_PASSWORD=replace-me
+RELEASE_KEY_ALIAS=oppolink
+RELEASE_KEY_PASSWORD=replace-me

@@ -1,0 +1,53 @@
+Categories:
+  - Internet
+  - Phone & SMS
+License: AGPL-3.0-only
+SourceCode: https://github.com/wienerlabs/oppolink
+IssueTracker: https://github.com/wienerlabs/oppolink/issues
+Changelog: https://github.com/wienerlabs/oppolink/blob/main/CHANGELOG.md
+
+Name: OppoLink
+AutoName: OppoLink
+Summary: BLE-only full-duplex voice calls between two Android phones
+Description: |-
+  OppoLink lets two Android phones place full-duplex voice calls
+  directly over Bluetooth Low Energy — no internet, no router, no
+  cellular, no account. The audio path runs at 16 kHz Opus VoIP, 20 ms
+  frames, over an L2CAP CoC socket; every frame is encrypted with
+  Curve25519 + ChaCha20-Poly1305 derived at handshake time.
+
+  Optimised for OPPO ColorOS (Reno / Find / A-series) — the first-run
+  wizard deep-links into Startup Manager, Battery Optimization,
+  Floating Window, and Auto-Launch settings so background calls
+  survive screen-off. Generic Android 10+ is supported but not the
+  reference platform.
+
+  OppoLink is not affiliated with Guangdong OPPO Mobile
+  Telecommunications Corp. See DISCLAIMER.md in the repository.
+
+RepoType: git
+Repo: https://github.com/wienerlabs/oppolink.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    subdir: android/app
+    gradle:
+      - yes
+    # Rust + cargo-ndk must be installed before Gradle runs so the
+    # UniFFI bridge can cross-compile.
+    sudo:
+      - apt-get update
+      - apt-get install -y cmake clang
+    init: |-
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      . "$HOME/.cargo/env"
+      rustup target add aarch64-linux-android armv7-linux-androideabi
+      cargo install cargo-ndk --locked
+    output: app/build/outputs/apk/release/app-release.apk
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1

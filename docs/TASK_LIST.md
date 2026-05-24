@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-24 after Sprint 4 D13 shipped (wire format v2 lock; CI verify deferred — wienerlabs org Actions billing).
+Last updated: 2026-05-24 after **Sprint 4 closed** (D12 + D13 + D15; D14 hardware-pending; CI verify deferred — wienerlabs org Actions billing). **v0.1.0 build-ready.**
 
 ---
 
@@ -25,7 +25,9 @@ Last updated: 2026-05-24 after Sprint 4 D13 shipped (wire format v2 lock; CI ver
 | D10 | ColorOS battery whitelist wizard | `b615cc2` | _billing-blocked_ | reflective version detect; first-run wizard; OEM intents fall back to platform Settings |
 | D11 | Reconnect on drop (5 s window) | `4b56c77` | _billing-blocked_ | client reopen loop on cached PSM; server accept loop |
 | D12 | Push-to-talk mode | `b1f242f` | _billing-blocked_ | mic hardware off via AudioRecord.stop; PTT toggle + hold-to-talk button |
-| D13 | Encryption (Curve25519 + ChaCha20-Poly1305) | _pending — see commit row_ | _billing-blocked_ | **wire format v2 lock**; SAS code on PsmExchanged; HKDF-derived nonce prefix |
+| D13 | Encryption (Curve25519 + ChaCha20-Poly1305) | `79037db` | _billing-blocked_ | **wire format v2 lock**; SAS code on PsmExchanged; HKDF-derived nonce prefix |
+| D14 | Battery profiling (<5%/hour on Reno 11) | _hardware-pending_ | n/a | needs Tier 1 device + 30-min test call |
+| D15 | Signed APK + GitHub release + F-Droid manifest | _pending — see commit row_ | _billing-blocked_ | release.yml triggered on v* tags; metadata/link.oppolink.yml; v0.1.0 ready |
 
 ---
 
@@ -368,17 +370,57 @@ Open follow-ups (Sprint 4 polish):
   MITM can't substitute pubkeys without the SAS hash changing
   pre-connection.
 
-### D14 — Battery profiling
-- Reno 11 active-call drain budget: <5 %/hour.
-- Probe `BatteryManager` every 60 s during a 30-min test call.
-- Mitigations if missed: drop Opus complexity to 3, drop BLE PHY back
-  to LE 1M, reduce TX power.
+### D14 — Battery profiling (hardware-pending)
 
-### D15 — Signed APK + GitHub release + F-Droid manifest
-- Local keystore stored outside the repo. CI release workflow built on
-  top of the existing debug pipeline.
-- F-Droid manifest at `metadata/link.oppolink.yml`.
-- Play Store: deferred pending trademark counsel (see Open Questions).
+Spec: Reno 11 active-call drain budget <5 %/hour, measured by polling
+`BatteryManager` every 60 s during a 30-min test call. No code change
+needed — the existing `CallForegroundService` keeps the call alive
+through screen-off, which is the only state where this is meaningful.
+
+Mitigations queued for the day we miss the budget:
+- Drop Opus complexity from 5 to 3 (`oppolink-codec::OPUS_COMPLEXITY`).
+- Drop BLE PHY back to LE 1M (cheaper radio, halves throughput which
+  is still 4× our 24 kbps budget).
+- Reduce TX power (`AdvertiseSettings.ADVERTISE_TX_POWER_LOW`).
+
+### D15 — Signed APK + GitHub release + F-Droid manifest (shipped)
+
+What landed:
+- `signing.properties.example` at repo root + `.gitignore` updated to
+  exclude `signing.properties` + `release.jks`. Documents the
+  one-time `keytool` invocation that produces a 4096-bit RSA keystore
+  with 100-year validity.
+- `android/app/build.gradle.kts` gains a `signingConfigs.release` block
+  that reads `signing.properties` for local dev or env vars for CI.
+  `buildTypes.release` conditionally attaches the release signing
+  config when secrets are present, else falls back to debug signing so
+  unsigned smoke builds still produce an APK.
+- `.github/workflows/release.yml` — tag-triggered (`v*`) workflow that
+  decodes `RELEASE_KEYSTORE_B64` to disk, runs `./gradlew
+  :app:assembleRelease`, uploads the signed APK as a build artifact,
+  then `gh release create`s a GitHub Release. Release notes are
+  pulled from the matching `## vX.Y.Z` section of `CHANGELOG.md`.
+- `metadata/link.oppolink.yml` — canonical F-Droid build metadata.
+  Documents Categories, License, Build steps (Rust + cargo-ndk init
+  before Gradle), CurrentVersion / CurrentVersionCode. The actual
+  fdroiddata MR is a manual follow-up.
+- `RELEASE.md` — checklist + secret list + Play Store deferral note.
+- `CHANGELOG.md` seeded with the v0.1.0 entry summarising every
+  shipped Sprint 1–4 deliverable.
+- `android/app/build.gradle.kts` versionName bumped from `0.1.0-dev`
+  to `0.1.0`; versionCode stays at `1` for the first real RC.
+
+Org-level GitHub secrets the workflow expects on `wienerlabs`:
+
+| Name | Contents |
+| --- | --- |
+| `RELEASE_KEYSTORE_B64` | `base64 oppolink-release.jks` |
+| `RELEASE_STORE_PASSWORD` | keystore password |
+| `RELEASE_KEY_ALIAS` | usually `oppolink` |
+| `RELEASE_KEY_PASSWORD` | key password |
+
+Once the Actions billing is restored, tagging `v0.1.0` produces a
+signed APK release.
 
 ---
 

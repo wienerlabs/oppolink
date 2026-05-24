@@ -15,13 +15,41 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
-        versionName = "0.1.0-dev"
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
         // Match the ABIs we cross-compile for in :core-protocol.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+    }
+
+    // Sprint 4 D15 — release signing. Reads `signing.properties` at the
+    // repo root for local dev, or the matching env vars in CI. Either
+    // path is optional; when neither is present the release build falls
+    // back to the debug signing config so unit / smoke builds still
+    // succeed without secrets.
+    signingConfigs {
+        create("release") {
+            val signingProps = rootProject.file("../signing.properties")
+            when {
+                signingProps.exists() -> {
+                    val props = java.util.Properties().apply {
+                        signingProps.inputStream().use { load(it) }
+                    }
+                    storeFile = file(props.getProperty("RELEASE_STORE_FILE"))
+                    storePassword = props.getProperty("RELEASE_STORE_PASSWORD")
+                    keyAlias = props.getProperty("RELEASE_KEY_ALIAS")
+                    keyPassword = props.getProperty("RELEASE_KEY_PASSWORD")
+                }
+                System.getenv("RELEASE_STORE_FILE") != null -> {
+                    storeFile = file(System.getenv("RELEASE_STORE_FILE"))
+                    storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+                    keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                    keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+                }
+            }
+        }
     }
 
     buildTypes {
@@ -33,6 +61,12 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Sprint 4 D15 — only attach the release signing config when
+            // the credentials are actually present. Otherwise fall back
+            // to debug signing so CI smoke builds and local `gradle help`
+            // don't choke on missing files.
+            val rs = signingConfigs.getByName("release")
+            signingConfig = if (rs.storeFile != null) rs else signingConfigs.getByName("debug")
         }
     }
 
