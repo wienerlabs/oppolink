@@ -64,6 +64,15 @@ class SetupViewModel @Inject constructor(
         _shouldShowWizard.value = false
     }
 
+    /**
+     * Re-read the persisted flag and re-evaluate. MainScreen calls this
+     * after returning from SettingsScreen so a `Re-run wizard` reset
+     * there propagates back to the gate.
+     */
+    fun refresh() {
+        _shouldShowWizard.value = ColorOsSettings.isColorOs() && !setupPrefs.colorOsSetupComplete
+    }
+
     private companion object {
         const val TAG = "SetupViewModel"
     }

@@ -90,3 +90,9 @@ incompatible — the version byte hard-rejects on handshake.
   failures on a single session terminate the call with a "Suspicious
   traffic" error. Single-bit RF flips don't trigger it; sustained
   injection does. No automatic reconnect after this failure mode.
+- **Settings screen** — reachable from the Discovery header. Surfaces
+  app version + wire-protocol version + license; on ColorOS, lets the
+  user re-open the four permission deep-links and toggle the first-run
+  wizard back on (`SetupViewModel.refresh()` picks the flip up on
+  return). Privacy section spells out the "no telemetry / no network /
+  no accounts" stance.

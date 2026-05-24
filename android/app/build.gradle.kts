@@ -72,6 +72,10 @@ android {
 
     buildFeatures {
         compose = true
+        // Sprint 4 polish — Settings screen reads BuildConfig.VERSION_NAME
+        // / VERSION_CODE so the displayed version stays in lockstep with
+        // the Gradle config without a manual constant.
+        buildConfig = true
     }
 
     compileOptions {

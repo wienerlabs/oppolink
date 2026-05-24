@@ -40,6 +40,7 @@ import link.oppolink.bluetooth.PeerScanner
 @Composable
 fun DiscoveryScreen(
     onPeerTap: (Peer) -> Unit,
+    onSettings: () -> Unit = {},
     viewModel: DiscoveryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -56,7 +57,7 @@ fun DiscoveryScreen(
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
-            DiscoveryHeader(state)
+            DiscoveryHeader(state, onSettings = onSettings)
             Spacer(Modifier.height(16.dp))
             ErrorBanner(state)
             PeerList(state.peers, onPeerTap = onPeerTap, modifier = Modifier.fillMaxSize())
@@ -65,17 +66,26 @@ fun DiscoveryScreen(
 }
 
 @Composable
-private fun DiscoveryHeader(state: DiscoveryUiState) {
-    Column {
-        Text(text = "OppoLink", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            text = "${state.nickname} • ${if (state.isLive) "live" else "idle"}",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = "${state.peers.size} peer${if (state.peers.size == 1) "" else "s"} visible",
-            style = MaterialTheme.typography.labelMedium,
-        )
+private fun DiscoveryHeader(state: DiscoveryUiState, onSettings: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "OppoLink", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                text = "${state.nickname} • ${if (state.isLive) "live" else "idle"}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = "${state.peers.size} peer${if (state.peers.size == 1) "" else "s"} visible",
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        androidx.compose.material3.TextButton(onClick = onSettings) {
+            Text("Settings")
+        }
     }
 }
 
