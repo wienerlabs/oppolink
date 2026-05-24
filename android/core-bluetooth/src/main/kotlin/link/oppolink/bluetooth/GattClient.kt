@@ -17,7 +17,9 @@ import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import uniffi.oppolink_protocol.EphemeralKeyPair
 import uniffi.oppolink_protocol.HandshakeMessage
+import uniffi.oppolink_protocol.SessionKey
 import uniffi.oppolink_protocol.handshakeCharUuid
 import uniffi.oppolink_protocol.parseHandshake
 
@@ -34,6 +36,15 @@ import uniffi.oppolink_protocol.parseHandshake
 data class GattHandshakeResult(
     val handshake: HandshakeMessage,
     val negotiatedPhy: Int,
+    /**
+     * Sprint 4 D13 — derived AEAD key for this call. The Tx / Rx loops
+     * call `sessionKey.encryptFrame` / `decryptFrame` on every 20 ms
+     * frame. `null` only on the legacy code path during v1→v2 migration;
+     * the new code always produces one.
+     */
+    val sessionKey: SessionKey,
+    /** Held by [GattClient] until the client writes its pubkey into L2CAP. */
+    internal val clientPubkey: ByteArray,
 )
 
 /**
@@ -51,21 +62,33 @@ internal class GattClient(
 ) {
 
     /**
-     * Open an L2CAP CoC socket against [peer] at the negotiated [psm]. The
-     * returned [BluetoothSocket] is connected and ready for I/O. Caller owns
-     * it and must close it.
+     * Open an L2CAP CoC socket against [peer] at [psm] and write the
+     * client's 32-byte ephemeral pubkey as the first payload bytes. The
+     * server side reads those 32 bytes before any audio frame arrives,
+     * derives its own [SessionKey], and matches what the client
+     * computed in [fetchHandshake].
      *
-     * Blocking: callers MUST invoke from a dedicated worker [Thread] — the
-     * `connect()` call parks until the server side has accepted us or the
-     * radio gives up.
+     * `clientPubkey` is the bytes the [fetchHandshake] caller saved in
+     * [GattHandshakeResult.clientPubkey]; passing it explicitly avoids
+     * having `GattClient` hold mutable session state across method calls.
+     *
+     * Blocking: callers MUST invoke from a dedicated worker [Thread].
      */
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    fun openL2capSocket(peer: Peer, psm: Int): BluetoothSocket {
+    fun openL2capSocket(peer: Peer, psm: Int, clientPubkey: ByteArray): BluetoothSocket {
+        require(clientPubkey.size == 32) { "Curve25519 pubkey must be exactly 32 bytes" }
         val adapter = adapter ?: error("Bluetooth adapter unavailable")
         val device = adapter.getRemoteDevice(peer.bdAddress)
         val socket = device.createInsecureL2capChannel(psm)
         socket.connect() // blocks until peer accepts or fails
+        try {
+            socket.outputStream.write(clientPubkey)
+            socket.outputStream.flush()
+        } catch (t: Throwable) {
+            runCatching { socket.close() }
+            throw t
+        }
         return socket
     }
 
@@ -143,7 +166,7 @@ internal class GattClient(
                         return
                     }
                     parsedHandshake = parsed
-                    Log.i(TAG, "handshake from ${peer.bdAddress}: psm=${parsed.psm.toInt()}")
+                    Log.i(TAG, "handshake from ${peer.bdAddress}: psm=${parsed.psm.toInt()}, sas pending ECDH")
                     // Trigger PHY snapshot before tearing the GATT session down.
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         g.readPhy()
@@ -168,15 +191,35 @@ internal class GattClient(
                     val handshake = parsedHandshake
                     runCatching { g.disconnect() }
                     runCatching { g.close() }
-                    if (cont.isActive) {
-                        if (handshake == null) {
-                            cont.resumeWithException(
-                                IllegalStateException("PHY read fired before handshake parsed"),
-                            )
-                        } else {
-                            cont.resume(GattHandshakeResult(handshake, fallbackPhy))
-                        }
+                    if (!cont.isActive) return
+                    if (handshake == null) {
+                        cont.resumeWithException(
+                            IllegalStateException("PHY read fired before handshake parsed"),
+                        )
+                        return
                     }
+                    // Sprint 4 D13 — ECDH. The server published its
+                    // ephemeral pubkey in the handshake payload. We build
+                    // ours, derive the session key, and let the caller
+                    // write our pubkey across L2CAP in openL2capSocket.
+                    val ourKp = EphemeralKeyPair()
+                    val ourPub = ourKp.publicKey()
+                    val sessionKey = try {
+                        ourKp.deriveSession(handshake.pubkey)
+                    } catch (t: Throwable) {
+                        cont.resumeWithException(
+                            IllegalStateException("ECDH derive failed: ${t.message}", t),
+                        )
+                        return
+                    }
+                    cont.resume(
+                        GattHandshakeResult(
+                            handshake = handshake,
+                            negotiatedPhy = fallbackPhy,
+                            sessionKey = sessionKey,
+                            clientPubkey = ourPub,
+                        ),
+                    )
                 }
 
                 private fun finishWithError(g: BluetoothGatt, message: String) {

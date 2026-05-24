@@ -25,21 +25,26 @@ actually buys you.
 - **Forward secrecy beyond a single session** — handled by ephemeral
   Curve25519, but each session's keys live in memory until call end.
 
-## In-scope threats (v1 must defeat)
+## In-scope threats (v2 defeats)
 
-1. **Passive RF eavesdropping** within Bluetooth range. Mitigation: AEAD
-   (ChaCha20-Poly1305) keyed by ECDH; the BLE link is treated as a public
-   channel.
-2. **Active replay** of captured frames. Mitigation: per-frame nonce derived
-   from `seq` xored with a session-unique nonce prefix; receiver tracks the
-   highest accepted `seq` and rejects rewinds.
-3. **MITM at handshake** by a co-located attacker forwarding GATT exchanges.
-   Mitigation: out-of-band visual verification of a short authentication
-   string (SAS) derived from both pubkeys. Lands in Sprint 4 D13.
-4. **Battery / radio DoS**: hostile peer keeps the L2CAP socket open and
-   sends garbage. Mitigation: AEAD verification short-circuits decode;
-   ≥3 consecutive AEAD failures terminate the session and back off advertising
-   for 60 s.
+1. **Passive RF eavesdropping** within Bluetooth range. Mitigation:
+   ChaCha20-Poly1305 keyed by Curve25519 ECDH. The BLE link is treated
+   as a public channel. **Shipped in Sprint 4 D13** (`PROTOCOL_VERSION
+   = 0x02`).
+2. **Active replay** of captured frames. Mitigation: per-frame nonce
+   derived from `seq` XOR'd with a session-unique 12-byte prefix; the
+   AEAD tag binds the header `[seq | ts]` as AAD. Receiver SHOULD also
+   track the highest accepted `seq` (jitter buffer already drops late
+   arrivals).
+3. **MITM at handshake** by a co-located attacker forwarding GATT
+   exchanges. Mitigation: 6-digit decimal SAS derived from the same
+   HKDF output that produced the AEAD key. The UI surfaces it on the
+   PsmExchanged screen; both peers see the same 6 digits and read them
+   aloud before voicing anything sensitive.
+4. **Battery / radio DoS**: hostile peer keeps the L2CAP socket open
+   and sends garbage. Mitigation: AEAD verification short-circuits
+   decode (Rx logs + drops the frame, jitter buffer PLCs the gap).
+   Three-strike disconnect policy is a Sprint 4 D14 polish item.
 
 ## Out-of-scope threats (v1)
 

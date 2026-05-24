@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-24 after Sprint 4 D12 shipped (CI verify deferred — wienerlabs org Actions billing).
+Last updated: 2026-05-24 after Sprint 4 D13 shipped (wire format v2 lock; CI verify deferred — wienerlabs org Actions billing).
 
 ---
 
@@ -24,7 +24,8 @@ Last updated: 2026-05-24 after Sprint 4 D12 shipped (CI verify deferred — wien
 | D9 | Foreground service + persistent notification | `58ff599` | _billing-blocked_ | survives screen-off; "End call" notification action; mm:ss ticker |
 | D10 | ColorOS battery whitelist wizard | `b615cc2` | _billing-blocked_ | reflective version detect; first-run wizard; OEM intents fall back to platform Settings |
 | D11 | Reconnect on drop (5 s window) | `4b56c77` | _billing-blocked_ | client reopen loop on cached PSM; server accept loop |
-| D12 | Push-to-talk mode | _pending — see commit row_ | _billing-blocked_ | mic hardware off via AudioRecord.stop; PTT toggle + hold-to-talk button |
+| D12 | Push-to-talk mode | `b1f242f` | _billing-blocked_ | mic hardware off via AudioRecord.stop; PTT toggle + hold-to-talk button |
+| D13 | Encryption (Curve25519 + ChaCha20-Poly1305) | _pending — see commit row_ | _billing-blocked_ | **wire format v2 lock**; SAS code on PsmExchanged; HKDF-derived nonce prefix |
 
 ---
 
@@ -317,16 +318,55 @@ Open follow-ups:
   surface a "remote muted" indicator if the peer's stream stalls for
   >N ms (the jitter buffer's `late_arrival_count` could feed this).
 
-### D13 — Encryption (Curve25519 + ChaCha20-Poly1305)
-- ECDH key agreement at handshake. Real bytes go into the pubkey field
-  that v1 has been zero-padding all along — wire-format-stable upgrade.
-- AEAD on every audio frame; nonce = 12-byte session nonce XOR seq.
-- **Bring `decide_role` back into the picture here.** Both peers now
-  exchange their pubkeys on an open L2CAP socket and can include their
-  identifier in the payload, so the deterministic tie-break (lower BD_ADDR
-  / lower pubkey hash) becomes implementable.
-- Short authentication string (SAS) verification UX: show 6 emoji on
-  both screens; user taps "matches" to accept.
+### D13 — Encryption (shipped, wire format v2)
+
+What landed:
+- Rust deps: `x25519-dalek 2`, `chacha20poly1305 0.10`, `hkdf 0.12`,
+  `sha2 0.10`, `rand_core 0.6` (CSPRNG via `OsRng`). All RustCrypto,
+  pure Rust, Android-NDK friendly.
+- `rust/oppolink-protocol/src/crypto.rs`: `EphemeralKeyPair` UniFFI
+  Object (CSPRNG-generated, `public_key`, `derive_session`). ECDH
+  result fed into HKDF-SHA256 with `salt = min(my_pub, peer_pub)`,
+  `info = b"oppolink/v2/aead" || max(my_pub, peer_pub)`. Output: 32-byte
+  ChaCha key + 12-byte nonce prefix + 3-byte SAS material.
+- `rust/oppolink-protocol/src/session.rs`: `SessionKey` UniFFI Object
+  holding `ChaCha20Poly1305` cipher + nonce prefix + cached SAS.
+  `encrypt_frame(seq, ts, opus)` builds wire bytes
+  `[seq | ts | nonce | ciphertext | tag]`. `decrypt_frame(bytes)` parses
+  + AEAD-verifies + returns `DecryptedAudioFrame { header, opus_packet }`.
+  AAD = the 4-byte header so a flipped `seq` / `ts` invalidates the tag.
+- `PROTOCOL_VERSION` bumped from `0x01` to `0x02`. `HANDSHAKE_VERSION`
+  matched. Peers receiving an unknown version drop the GATT connection.
+- 9 new tests (4 crypto + 5 session: roundtrip, tamper, truncation,
+  wrong-session, nonce XOR). Workspace at 44/44.
+- `GattServerHost.start` builds an `EphemeralKeyPair` and puts its
+  pubkey into the handshake characteristic (was zero-padded in v1).
+  `deriveServerSession(socket)` reads the first 32 bytes of the L2CAP
+  payload (client pubkey), runs ECDH, returns the matching
+  `SessionKey`. Reconnect-safe — ECDH is deterministic.
+- `GattClient.fetchHandshake` generates its own ephemeral keypair,
+  ECDHs against the server pubkey from the handshake, returns
+  `GattHandshakeResult { handshake, negotiatedPhy, sessionKey, clientPubkey }`.
+- `GattClient.openL2capSocket(peer, psm, clientPubkey)` writes the
+  32-byte client pubkey as the L2CAP socket's first payload before any
+  audio frame.
+- `PeerConnector.activeSession: { sessionKey, clientPubkey }` survives
+  across reconnects. Tx loop uses `sessionKey.encryptFrame`; Rx uses
+  `sessionKey.decryptFrame` and drops AEAD failures (jitter buffer
+  PLCs the gap).
+- `ConnectionState.PsmExchanged.sasCode: UInt` — 6-digit decimal SAS;
+  UI shows "SAS 482301 (read aloud to verify)". InCallCard adds an
+  "Encrypted" assist chip.
+
+Open follow-ups (Sprint 4 polish):
+- SAS verification UX: emoji rendering instead of digits + explicit
+  "matches / doesn't match" confirm tap. Today the user just reads
+  digits; Signal-style 6-emoji is friendlier.
+- Three-strike AEAD-failure disconnect policy — today a stream of
+  garbage just floods the log without terminating the session.
+- Pubkey commitment in the GATT advertisement (hashed pubkey) so a
+  MITM can't substitute pubkeys without the SAS hash changing
+  pre-connection.
 
 ### D14 — Battery profiling
 - Reno 11 active-call drain budget: <5 %/hour.

@@ -22,9 +22,11 @@ use crate::manufacturer::MAX_NICKNAME_BYTES;
 /// on a mismatch.
 pub const HANDSHAKE_MAGIC: [u8; 4] = *b"OPL1";
 
-/// Same wire-format version as the manufacturer-data layout. A peer receiving
-/// an unknown version MUST close the GATT connection without further reads.
-pub const HANDSHAKE_VERSION: u8 = 0x01;
+/// Same wire-format version as the manufacturer-data layout. Bumped to
+/// `0x02` in Sprint 4 D13 when ECDH + AEAD audio frames became mandatory.
+/// A peer receiving an unknown version MUST close the GATT connection
+/// without further reads.
+pub const HANDSHAKE_VERSION: u8 = 0x02;
 
 /// Length of the embedded Curve25519 public key. Sprint 4 will fill these
 /// bytes; v1 emits all zeros so the wire format is fixed and future versions

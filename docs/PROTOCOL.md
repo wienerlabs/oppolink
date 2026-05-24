@@ -1,8 +1,9 @@
-# Wire Protocol — v1 (draft)
+# Wire Protocol — v2
 
-Status: **draft**. Locked at the end of Sprint 1 D4 once the L2CAP echo test
-validates round-trip latency. Subsequent breaking changes require a version
-byte bump.
+Status: **locked at v2** after Sprint 4 D13 (Curve25519 + ChaCha20-Poly1305).
+v1 (Sprint 1–3) was cleartext audio frames + zero-padded pubkey; v2 mandates
+ECDH + AEAD. Subsequent breaking changes require another `PROTOCOL_VERSION`
+bump.
 
 ## Identifiers
 
@@ -114,12 +115,14 @@ side simply mirrors each frame back to the sender; the client measures
 - Both sides MUST run the I/O on dedicated `Thread`s — coroutine dispatcher
   jitter is not tolerable on the 20 ms audio tick we're rehearsing for.
 
-## Audio frame (Sprint 2 D5, locked)
+## Audio frame (Sprint 4 D13, locked — AEAD mandatory)
 
-The on-wire framing v1 ships **without AEAD** — the 12-byte nonce / 16-byte
-tag fields described below land in Sprint 4 D13 once ECDH key agreement is
-in. Until then the audio frame is just the framing header plus the raw
-Opus packet:
+`PROTOCOL_VERSION` `0x02` mandates ChaCha20-Poly1305 on every audio
+frame. The cleartext layout below is retained for archival purposes
+only — peers that negotiate `version = 0x02` MUST drop any frame that
+fails AEAD verification.
+
+### v1 cleartext (archived — Sprint 2 D5 → Sprint 4 D13)
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -161,24 +164,56 @@ Opus packet:
   complexity 5, FEC on, DTX off. Source of truth is
   `rust/oppolink-codec/src/lib.rs`.
 
-### Sprint 4 D13 upgrade path
-
-Once ECDH lands, the audio frame becomes:
+### v2 AEAD frame (current — Sprint 4 D13 locked)
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ len:        u16 big-endian                          │
+│ len:        u16 big-endian   (L2CAP delimiter; outside the AEAD AAD) │
 ├─────────────────────────────────────────────────────┤
-│ seq:        u16 big-endian                          │
-│ ts:         u16 big-endian                          │
+│ seq:        u16 big-endian   (AAD)                  │
+│ ts:         u16 big-endian   (AAD)                  │
 │ nonce:      [u8; 12]         (ChaCha20-Poly1305)    │
-│ ciphertext: variable          (encrypted Opus)      │
-│ tag:        [u8; 16]                                │
+│ ciphertext: variable          (encrypted Opus packet)│
+│ tag:        [u8; 16]         (Poly1305 authentication tag)            │
 └─────────────────────────────────────────────────────┘
 ```
 
-The version byte in the handshake gates the upgrade — peers must not mix
-v1-cleartext with v1-AEAD frames inside a single session.
+- **AAD** (additional authenticated data) = the 4-byte header
+  `[seq | ts]`. The peer cannot tamper with `seq` / `ts` without
+  invalidating the AEAD tag.
+- **Nonce** = HKDF-derived 12-byte `nonce_prefix` XOR
+  (`seq` zero-padded big-endian to 12 bytes). `seq` is unique per
+  session so the resulting nonce never repeats.
+- **Tag mismatch** → receiver drops the frame; the jitter buffer PLCs
+  the gap.
+
+### v2 key schedule
+
+```
+ephemeral_keypair_a, ephemeral_keypair_b  (Curve25519, CSPRNG, fresh per call)
+shared_secret = X25519(secret_a, public_b) = X25519(secret_b, public_a)
+
+salt = byte-wise min(public_a, public_b)
+ikm  = byte-wise max(public_a, public_b)
+info = b"oppolink/v2/aead" || ikm
+
+okm  = HKDF-SHA256(salt = salt, ikm = shared_secret, info = info, len = 47)
+       = [chacha_key:32 | nonce_prefix:12 | sas_bytes:3]
+```
+
+- `salt = min(pubkey_a, pubkey_b)` gives a canonical ordering so both
+  peers derive the same OKM regardless of who calls themselves "a".
+- `sas_bytes` → rendered as `u24 % 1_000_000` → 6-digit decimal SAS,
+  shown to both users for out-of-band MITM verification.
+
+### Wire-level pubkey exchange (Sprint 4 D13)
+
+The handshake characteristic v1 transmitted a zero-padded 32-byte
+pubkey field. v2 makes that field load-bearing: the server publishes
+its ephemeral pubkey via GATT. The **client** writes its own ephemeral
+pubkey as the **first 32 bytes** of the L2CAP socket payload, before
+any audio frame. Server reads those 32 bytes, ECDHs against its own
+secret, derives the same OKM.
 
 ## Key schedule
 

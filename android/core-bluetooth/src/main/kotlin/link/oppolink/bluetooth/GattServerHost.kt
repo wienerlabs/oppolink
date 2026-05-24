@@ -16,8 +16,10 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import java.util.UUID
+import uniffi.oppolink_protocol.EphemeralKeyPair
 import uniffi.oppolink_protocol.HandshakeMessage
 import uniffi.oppolink_protocol.Role
+import uniffi.oppolink_protocol.SessionKey
 import uniffi.oppolink_protocol.encodeHandshake
 import uniffi.oppolink_protocol.handshakeCharUuid
 
@@ -43,6 +45,8 @@ internal class GattServerHost(
     private var serverSocket: BluetoothServerSocket? = null
     private var handshakeChar: BluetoothGattCharacteristic? = null
     private var allocatedPsm: Int = 0
+    /** Sprint 4 D13 — server's ephemeral Curve25519 keypair, generated in [start]. */
+    private var keyPair: EphemeralKeyPair? = null
 
     private val callback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
@@ -63,10 +67,18 @@ internal class GattServerHost(
         serverSocket = socket
         allocatedPsm = socket.psm
 
+        // Sprint 4 D13 — server's ephemeral keypair. Pubkey goes into the
+        // handshake; the secret half is kept on this object and consumed
+        // when an inbound L2CAP socket completes its first 32-byte
+        // pubkey exchange (see [deriveServerSession]).
+        val kp = EphemeralKeyPair()
+        val ourPub = kp.publicKey()
+        keyPair = kp
+
         val payload = encodeHandshake(
             HandshakeMessage(
                 role = Role.SERVER,
-                pubkey = ByteArray(32), // zeros until Sprint 4 D13
+                pubkey = ourPub,
                 psm = allocatedPsm.toUShort(),
                 nickname = nickname,
             ),
@@ -115,6 +127,31 @@ internal class GattServerHost(
         }
     }
 
+    /**
+     * Sprint 4 D13 — read the client's 32-byte Curve25519 pubkey off the
+     * fresh L2CAP socket and ECDH it against our own keypair. Throws on
+     * EOF / IO failure; the caller treats that as "the socket died
+     * before handshake completed" and closes everything.
+     *
+     * Blocking; MUST be called from the same worker thread that did
+     * [acceptL2cap]. Returns the derived [SessionKey] which the audio
+     * pipeline uses for `encryptFrame` / `decryptFrame`.
+     */
+    fun deriveServerSession(socket: BluetoothSocket): SessionKey {
+        val kp = keyPair ?: error("GattServerHost not started")
+        val buf = ByteArray(32)
+        var read = 0
+        val input = socket.inputStream
+        while (read < buf.size) {
+            val n = input.read(buf, read, buf.size - read)
+            if (n < 0) throw java.io.IOException(
+                "L2CAP closed before client pubkey arrived ($read/${buf.size} bytes)",
+            )
+            read += n
+        }
+        return kp.deriveSession(buf)
+    }
+
     @SuppressLint("MissingPermission")
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT])
     fun stop() {
@@ -127,6 +164,7 @@ internal class GattServerHost(
 
         allocatedPsm = 0
         handshakeChar = null
+        keyPair = null
     }
 
     private companion object {

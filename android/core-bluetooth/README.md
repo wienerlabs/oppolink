@@ -41,6 +41,29 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 4 D13 scope (shipped)
+- `GattServerHost.start` generates an ephemeral Curve25519 keypair and
+  puts the pubkey into the handshake characteristic (was zero-padded
+  in v1). `keyPair` is held until the next [stop] call.
+- `GattServerHost.deriveServerSession(socket)` — reads the first
+  32 bytes off the freshly-accepted L2CAP socket (the client's pubkey),
+  runs ECDH, returns the matching `SessionKey`. Reconnect-safe because
+  ECDH is deterministic for the same peer pubkey.
+- `GattClient.fetchHandshake` parses the server's pubkey, builds the
+  client's own ephemeral keypair, derives the `SessionKey`, returns it
+  in `GattHandshakeResult.sessionKey` + `clientPubkey`.
+- `GattClient.openL2capSocket(peer, psm, clientPubkey)` writes the
+  32-byte client pubkey as the **first payload** of the L2CAP socket
+  (before any audio frame). The server's `deriveServerSession` reads
+  that exact handshake from the same byte position.
+- `PeerConnector` keeps `activeSession: { sessionKey, clientPubkey }`
+  at instance scope; `runCall` reuses it across `runDuplexSession`
+  reconnects.
+- Tx loop uses `sessionKey.encryptFrame(seq, ts, opus)` instead of
+  cleartext `buildAudioFrame`. Rx loop uses `sessionKey.decryptFrame`
+  and drops AEAD failures (jitter buffer PLCs the gap).
+- `ConnectionState.PsmExchanged.sasCode: UInt` — 6-digit decimal SAS.
+
 ## Sprint 4 D12 scope (shipped)
 - `PeerConnector.setMuted(boolean)` — instance-level `AtomicBoolean`
   + `AtomicReference<AudioCapture>` so the UI can toggle the mic at

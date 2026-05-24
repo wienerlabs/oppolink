@@ -28,15 +28,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import link.oppolink.audio.AudioCapture
 import link.oppolink.audio.AudioPlayback
-import uniffi.oppolink_protocol.AudioFrameHeader
 import uniffi.oppolink_protocol.Capabilities
 import uniffi.oppolink_protocol.JitterBuffer
 import uniffi.oppolink_protocol.JitterPopResult
 import uniffi.oppolink_protocol.Role
+import uniffi.oppolink_protocol.SessionKey
 import uniffi.oppolink_protocol.VoipDecoder
 import uniffi.oppolink_protocol.VoipEncoder
-import uniffi.oppolink_protocol.buildAudioFrame
-import uniffi.oppolink_protocol.parseAudioFrame
 import uniffi.oppolink_protocol.pcmSamplesPerFrame
 
 /**
@@ -118,6 +116,18 @@ internal class RealPeerConnector(
     /** The active capture session, set by [runDuplexCall], cleared on tear-down. */
     private val currentCapture = AtomicReference<AudioCapture?>(null)
 
+    /**
+     * Sprint 4 D13 — derived after the GATT handshake, used by every
+     * [runCall] on this peer (including reconnects on the same PSM).
+     * Cleared by [cancel] / [shutdown].
+     */
+    private val activeSession = AtomicReference<ActiveSession?>(null)
+
+    private data class ActiveSession(
+        val sessionKey: SessionKey,
+        val clientPubkey: ByteArray,
+    )
+
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun startPassiveServer(nickname: String) {
@@ -151,11 +161,13 @@ internal class RealPeerConnector(
             try {
                 _state.value = ConnectionState.Handshaking(Role.CLIENT, peer)
                 val result = client.fetchHandshake(peer)
+                activeSession.set(ActiveSession(result.sessionKey, result.clientPubkey))
                 _state.value = ConnectionState.PsmExchanged(
                     role = Role.CLIENT,
                     peer = peer,
                     psm = result.handshake.psm.toInt() and 0xFFFF,
                     negotiatedPhy = result.negotiatedPhy,
+                    sasCode = result.sessionKey.sas(),
                 )
             } catch (t: Throwable) {
                 _state.value = ConnectionState.Failed(
@@ -177,12 +189,14 @@ internal class RealPeerConnector(
             is ConnectionState.CallEnded -> s.psm to 0
             else -> error("Call can only start after handshake; current=${s::class.simpleName}")
         }
+        val session = activeSession.get()
+            ?: error("No active session — call connect() first")
         val socketRef = AtomicReference<BluetoothSocket?>(null)
 
         suspendCancellableCoroutine<Unit> { cont ->
             val thread = Thread({
                 try {
-                    val socket = client.openL2capSocket(peer, psm)
+                    val socket = client.openL2capSocket(peer, psm, session.clientPubkey)
                     socketRef.set(socket)
                     runDuplexCall(
                         socket = socket,
@@ -191,6 +205,7 @@ internal class RealPeerConnector(
                         psm = psm,
                         phy = phy,
                         durationMs = durationMs,
+                        sessionKey = session.sessionKey,
                     )
                     if (cont.isActive) cont.resume(Unit)
                 } catch (t: Throwable) {
@@ -224,6 +239,7 @@ internal class RealPeerConnector(
         connectJob?.cancel()
         connectJob = null
         muted.set(false)
+        activeSession.set(null)
         _state.value = ConnectionState.Idle
     }
 
@@ -246,6 +262,17 @@ internal class RealPeerConnector(
             while (!Thread.currentThread().isInterrupted) {
                 val socket = host.acceptL2cap() ?: break
                 val remotePeer = synthesizeRemotePeer(socket)
+                // Sprint 4 D13 — read the client pubkey + derive the AEAD
+                // key. Reconnect re-runs this on the same keypair (ECDH
+                // is deterministic for the same peer pubkey) so the
+                // resulting SessionKey matches what the client computed.
+                val sessionKey = try {
+                    host.deriveServerSession(socket)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "server ECDH failed: ${t.message}")
+                    runCatching { socket.close() }
+                    continue
+                }
                 try {
                     runDuplexCall(
                         socket = socket,
@@ -254,6 +281,7 @@ internal class RealPeerConnector(
                         psm = host.psm(),
                         phy = 0, // PHY readback only runs on the client during fetchHandshake
                         durationMs = null,
+                        sessionKey = sessionKey,
                     )
                 } catch (t: Throwable) {
                     Log.w(TAG, "server duplex call failed: ${t.message}")
@@ -325,6 +353,7 @@ internal class RealPeerConnector(
         psm: Int,
         phy: Int,
         durationMs: Long?,
+        sessionKey: SessionKey,
     ) {
         val capture = AudioCapture()
         val playback = AudioPlayback()
@@ -353,6 +382,7 @@ internal class RealPeerConnector(
                     framesSent = framesSent,
                     framesReceived = framesReceived,
                     callDeadlineNs = callDeadlineNs,
+                    sessionKey = sessionKey,
                 )
 
                 when (reason) {
@@ -413,6 +443,7 @@ internal class RealPeerConnector(
         framesSent: AtomicInteger,
         framesReceived: AtomicInteger,
         callDeadlineNs: Long?,
+        sessionKey: SessionKey,
     ): SessionEndReason {
         val encoder = VoipEncoder()
         val decoder = VoipDecoder()
@@ -438,12 +469,14 @@ internal class RealPeerConnector(
                     running = running,
                     callDeadlineNs = callDeadlineNs,
                     sessionReason = sessionReason,
+                    sessionKey = sessionKey,
                 )
                 rxThread = startRxThread(
                     channel = channel,
                     jitterBuffer = jitterBuffer,
                     running = running,
                     sessionReason = sessionReason,
+                    sessionKey = sessionKey,
                 )
                 playbackThread = startPlaybackThread(
                     decoder = decoder,
@@ -512,6 +545,7 @@ internal class RealPeerConnector(
         running: AtomicBoolean,
         callDeadlineNs: Long?,
         sessionReason: AtomicReference<SessionEndReason>,
+        sessionKey: SessionKey,
     ): Thread = Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val pcm = ShortArray(capture.frameSamples)
@@ -559,11 +593,13 @@ internal class RealPeerConnector(
                 Log.w(TAG, "encode failed: ${t.message}; stopping Tx")
                 break
             }
-            val header = AudioFrameHeader(
+            // Sprint 4 D13 — ChaCha20-Poly1305 wrap. Frame on the wire is
+            // now [seq | ts | nonce(12) | ciphertext | tag(16)].
+            val framed = sessionKey.encryptFrame(
                 seq = (seq and 0xFFFF).toUShort(),
                 ts = (tsTicks and 0xFFFF).toUShort(),
+                opusPacket = opus,
             )
-            val framed = buildAudioFrame(header, opus)
             val lenPrefix = byteArrayOf(
                 ((framed.size shr 8) and 0xFF).toByte(),
                 (framed.size and 0xFF).toByte(),
@@ -599,6 +635,7 @@ internal class RealPeerConnector(
         jitterBuffer: JitterBuffer,
         running: AtomicBoolean,
         sessionReason: AtomicReference<SessionEndReason>,
+        sessionKey: SessionKey,
     ): Thread = Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val lenBuf = ByteArray(2)
@@ -612,8 +649,16 @@ internal class RealPeerConnector(
                 }
                 val frameBuf = ByteArray(frameLen)
                 channel.receiveExact(frameBuf)
-                val parsed = parseAudioFrame(frameBuf)
-                jitterBuffer.push(parsed.header.seq, parsed.opusPacket)
+                // Sprint 4 D13 — AEAD-decrypt the frame. Tag mismatch or
+                // truncation means a tampered or wrong-key packet; drop it
+                // and keep going (the jitter buffer PLCs the gap).
+                val decrypted = try {
+                    sessionKey.decryptFrame(frameBuf)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "decrypt failed: ${t.message}; dropping frame")
+                    continue
+                }
+                jitterBuffer.push(decrypted.header.seq, decrypted.opusPacket)
             } catch (e: IOException) {
                 Log.i(TAG, "Rx closing — L2CAP socket lost: ${e.message}")
                 sessionReason.compareAndSet(SessionEndReason.Normal, SessionEndReason.SocketLost)

@@ -39,6 +39,12 @@ sealed interface ConnectionState {
         val peer: Peer,
         val psm: Int,
         val negotiatedPhy: Int,
+        /**
+         * Sprint 4 D13 — 6-digit decimal SAS derived from the ECDH
+         * shared secret. The user reads it aloud to the remote peer for
+         * MITM verification. `0` while still resolving / pre-D13.
+         */
+        val sasCode: UInt = 0u,
     ) : ConnectionState
 
     /**

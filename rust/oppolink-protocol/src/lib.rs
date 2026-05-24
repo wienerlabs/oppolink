@@ -12,12 +12,15 @@
 uniffi::setup_scaffolding!();
 
 mod audio;
+mod crypto;
 mod echo;
 mod handshake;
 mod jitter;
 mod manufacturer;
+mod session;
 
 pub use audio::{AudioError, AudioFrameHeader, ParsedAudioFrame, VoipDecoder, VoipEncoder};
+pub use crypto::{CryptoError, EphemeralKeyPair, HKDF_INFO, NONCE_PREFIX_LEN, SESSION_KEY_LEN};
 pub use echo::{EchoStats, ECHO_PACKET_LEN, ECHO_PAYLOAD_LEN, ECHO_SEQ_PREFIX_LEN};
 pub use handshake::{
     decide_role, HandshakeError, HandshakeMessage, Role, HANDSHAKE_MAGIC, HANDSHAKE_MAX_LEN,
@@ -27,6 +30,9 @@ pub use jitter::{JitterBuffer, JitterPopResult, JitterPushResult, JitterStats};
 pub use manufacturer::{
     Capabilities, ManufacturerData, MANUFACTURER_DATA_MAX_LEN, MANUFACTURER_ID, MAX_NICKNAME_BYTES,
     PROTOCOL_VERSION, WIRE_MAGIC,
+};
+pub use session::{
+    DecryptedAudioFrame, SessionDecryptError, SessionKey, AEAD_TAG_LEN, MIN_ENCRYPTED_FRAME_LEN,
 };
 
 /// 128-bit service UUID used in BLE advertising. ASCII "OPPL" on word-boundaries

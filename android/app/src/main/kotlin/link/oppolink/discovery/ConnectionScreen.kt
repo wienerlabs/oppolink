@@ -181,6 +181,11 @@ private fun InCallCard(
                     }
                     AssistChip(
                         onClick = {},
+                        label = { Text("Encrypted") },
+                        colors = AssistChipDefaults.assistChipColors(),
+                    )
+                    AssistChip(
+                        onClick = {},
                         label = { Text(phyLabel(inCall.negotiatedPhy)) },
                         colors = AssistChipDefaults.assistChipColors(),
                     )
@@ -345,7 +350,8 @@ private fun describe(state: ConnectionState): Triple<String, String, Boolean> = 
     )
     is ConnectionState.PsmExchanged -> Triple(
         "PSM received: ${state.psm}",
-        "Negotiated ${phyLabel(state.negotiatedPhy)} · ready to open L2CAP.",
+        "${phyLabel(state.negotiatedPhy)} · ChaCha20-Poly1305 ready · " +
+            "SAS ${"%06d".format(state.sasCode.toLong())} (read aloud to verify)",
         false,
     )
     is ConnectionState.InCall -> Triple(

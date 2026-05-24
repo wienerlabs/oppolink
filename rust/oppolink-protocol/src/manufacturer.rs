@@ -11,9 +11,11 @@
 /// other app that might also use `MANUFACTURER_ID = 0xFFFF` for testing.
 pub const WIRE_MAGIC: [u8; 2] = *b"OP";
 
-/// Wire-format version. A peer receiving a value it doesn't understand MUST
-/// drop the advertisement silently.
-pub const PROTOCOL_VERSION: u8 = 0x01;
+/// Wire-format version. Bumped to `0x02` in Sprint 4 D13 when ECDH +
+/// ChaCha20-Poly1305 became mandatory on the audio frame. A peer
+/// receiving a value it doesn't understand MUST drop the advertisement
+/// silently.
+pub const PROTOCOL_VERSION: u8 = 0x02;
 
 /// Bluetooth SIG manufacturer ID. `0xFFFF` is the reserved "test" ID used by
 /// projects without a SIG registration. Replaced with a real allocation
