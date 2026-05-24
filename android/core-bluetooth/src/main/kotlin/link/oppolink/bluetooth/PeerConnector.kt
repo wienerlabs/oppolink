@@ -168,6 +168,7 @@ internal class RealPeerConnector(
                     psm = result.handshake.psm.toInt() and 0xFFFF,
                     negotiatedPhy = result.negotiatedPhy,
                     sasCode = result.sessionKey.sas(),
+                    sasEmoji = result.sessionKey.sasEmoji(),
                 )
             } catch (t: Throwable) {
                 _state.value = ConnectionState.Failed(

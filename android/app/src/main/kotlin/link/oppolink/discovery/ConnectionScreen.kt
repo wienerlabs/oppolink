@@ -73,6 +73,12 @@ fun ConnectionScreen(
         ) {
             Header(peer)
             StateCard(state, modifier = Modifier.fillMaxWidth())
+            if (state is ConnectionState.PsmExchanged) {
+                SasEmojiCard(
+                    psm = state as ConnectionState.PsmExchanged,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             when (state) {
                 is ConnectionState.InCall -> {
                     InCallCard(
@@ -331,6 +337,66 @@ private fun phyLabel(phy: Int): String = when (phy) {
     else -> "PHY ?"
 }
 
+/**
+ * Signal-style SAS palette — 64 visually distinct glyphs the user can
+ * tell apart at a glance. Index by byte AND 0x3F.
+ */
+private val SAS_EMOJI_PALETTE = listOf(
+    "🐶", "🐱", "🦁", "🐯",
+    "🦊", "🐻", "🐼", "🐨",
+    "🐭", "🐹", "🐰", "🦝",
+    "🐺", "🐗", "🐮", "🐷",
+    "🐸", "🐵", "🦄", "🐔",
+    "🐧", "🦆", "🦉", "🦅",
+    "🐝", "🐛", "🐌", "🦋",
+    "🐠", "🐟", "🐬", "🐳",
+    "🐙", "🦞", "🦀", "🐢",
+    "🐍", "🦎", "🐉", "🌵",
+    "🌲", "🌳", "🌴", "🌱",
+    "🌿", "☘️", "🍀", "🎋",
+    "🌷", "🌹", "🌺", "🌸",
+    "🌼", "🌻", "🌝", "🌞",
+    "🌍", "🌎", "🌏", "⭐",
+    "🌟", "🔥", "💧", "🌈",
+)
+
+private fun emojisForSas(bytes: ByteArray): String =
+    bytes.joinToString("  ") { byte ->
+        SAS_EMOJI_PALETTE[(byte.toInt() and 0x3F)]
+    }
+
+@Composable
+private fun SasEmojiCard(
+    psm: ConnectionState.PsmExchanged,
+    modifier: Modifier = Modifier,
+) {
+    if (psm.sasEmoji.isEmpty()) return // legacy / pre-D13 path
+    Card(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Verify SAS", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Both phones should show the same six emoji. If they don't " +
+                    "match, an attacker is forwarding your handshake — hang up.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = emojisForSas(psm.sasEmoji),
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Decimal fallback: ${"%06d".format(psm.sasCode.toLong())}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 private fun describe(state: ConnectionState): Triple<String, String, Boolean> = when (state) {
     ConnectionState.Idle -> Triple("Waiting", "Preparing to connect…", false)
     is ConnectionState.RoleDecided -> Triple(
@@ -350,8 +416,7 @@ private fun describe(state: ConnectionState): Triple<String, String, Boolean> = 
     )
     is ConnectionState.PsmExchanged -> Triple(
         "PSM received: ${state.psm}",
-        "${phyLabel(state.negotiatedPhy)} · ChaCha20-Poly1305 ready · " +
-            "SAS ${"%06d".format(state.sasCode.toLong())} (read aloud to verify)",
+        "${phyLabel(state.negotiatedPhy)} · ChaCha20-Poly1305 ready — verify the SAS below.",
         false,
     )
     is ConnectionState.InCall -> Triple(

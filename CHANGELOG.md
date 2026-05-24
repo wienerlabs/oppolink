@@ -70,6 +70,7 @@ incompatible — the version byte hard-rejects on handshake.
   Actions billing has been failing since 2026-05-23 — code-side ships
   continued but the Android assembleDebug CI job has been skipped
   since then. Locally verified at every step.
-- **MITM SAS UX**: today the SAS is rendered as a 6-digit decimal.
-  Signal-style emoji rendering + explicit "matches / doesn't match"
-  confirmation is a v0.2 polish item.
+- **MITM SAS UX confirmation**: today the SAS is rendered as six
+  emoji from a 64-glyph palette, derived from a dedicated HKDF slice.
+  An explicit "matches / doesn't match" confirmation tap that locks
+  the call into the encrypted phase is queued for v0.2.

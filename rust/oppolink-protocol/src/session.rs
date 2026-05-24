@@ -24,7 +24,7 @@ use chacha20poly1305::{
 };
 
 use crate::audio::AudioFrameHeader;
-use crate::crypto::{NONCE_PREFIX_LEN, SESSION_KEY_LEN};
+use crate::crypto::{NONCE_PREFIX_LEN, SAS_EMOJI_LEN, SESSION_KEY_LEN};
 
 /// Wire-format constants for the encrypted audio frame.
 pub const FRAME_HEADER_LEN: usize = 4; // seq:u16 BE | ts:u16 BE
@@ -52,6 +52,7 @@ pub enum SessionDecryptError {
 pub struct SessionKey {
     inner: Mutex<SessionKeyInner>,
     sas_value: u32,
+    sas_emoji_indices: [u8; SAS_EMOJI_LEN],
 }
 
 impl std::fmt::Debug for SessionKey {
@@ -74,6 +75,7 @@ impl SessionKey {
         key: [u8; SESSION_KEY_LEN],
         nonce_prefix: [u8; NONCE_PREFIX_LEN],
         sas: u32,
+        sas_emoji: [u8; SAS_EMOJI_LEN],
     ) -> Arc<Self> {
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
         Arc::new(Self {
@@ -82,6 +84,7 @@ impl SessionKey {
                 nonce_prefix,
             }),
             sas_value: sas,
+            sas_emoji_indices: sas_emoji,
         })
     }
 }
@@ -89,10 +92,18 @@ impl SessionKey {
 #[uniffi::export]
 impl SessionKey {
     /// 6-digit decimal SAS for OOB MITM verification. Both peers see the
-    /// same number; the user reads it aloud to confirm there's no
-    /// person-in-the-middle. UI hookup is a Sprint 4 D14 polish task.
+    /// same number; kept around for logs / tests even though the UI now
+    /// renders the emoji form below.
     pub fn sas(&self) -> u32 {
         self.sas_value
+    }
+
+    /// Signal-style SAS: six bytes 0..=255 the Kotlin side masks with
+    /// `0x3F` to index into a 64-emoji palette. The user verifies that
+    /// the same six emoji appear on both phones; an attacker who
+    /// swapped pubkeys mid-handshake would produce different bytes.
+    pub fn sas_emoji(&self) -> Vec<u8> {
+        self.sas_emoji_indices.to_vec()
     }
 
     /// Encrypt one Opus packet. Returns the on-wire bytes

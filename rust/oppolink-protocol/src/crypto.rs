@@ -41,6 +41,11 @@ pub const NONCE_PREFIX_LEN: usize = 12;
 /// Length of the derived SAS material before rendering to decimal.
 pub const SAS_LEN: usize = 3;
 
+/// Number of emoji-table indices we derive for the Signal-style SAS UX.
+/// Each byte indexes a 64-emoji palette (mod 64) so the user can verify
+/// at a glance whether the same six animals appear on both phones.
+pub const SAS_EMOJI_LEN: usize = 6;
+
 /// Errors surfaced by the handshake crypto layer.
 #[derive(thiserror::Error, Debug, uniffi::Error)]
 pub enum CryptoError {
@@ -105,7 +110,7 @@ impl EphemeralKeyPair {
         let (salt, ikm) = sorted_pubkey_pair(my_public.as_bytes(), peer_public.as_bytes());
 
         let hkdf = Hkdf::<Sha256>::new(Some(&salt), shared.as_bytes());
-        let mut okm = [0u8; SESSION_KEY_LEN + NONCE_PREFIX_LEN + SAS_LEN];
+        let mut okm = [0u8; SESSION_KEY_LEN + NONCE_PREFIX_LEN + SAS_LEN + SAS_EMOJI_LEN];
         // Mix the HKDF info with the byte-wise larger pubkey so two peers
         // that swap roles derive an identical key (commutative under the
         // canonical ordering we picked for the salt).
@@ -121,12 +126,21 @@ impl EphemeralKeyPair {
         nonce_prefix.copy_from_slice(&okm[SESSION_KEY_LEN..SESSION_KEY_LEN + NONCE_PREFIX_LEN]);
 
         // SAS = 24 bits of HKDF output → 6 decimal digits (0..999_999).
-        let sas_raw = &okm[SESSION_KEY_LEN + NONCE_PREFIX_LEN..];
+        let sas_offset = SESSION_KEY_LEN + NONCE_PREFIX_LEN;
+        let sas_raw = &okm[sas_offset..sas_offset + SAS_LEN];
         let sas_u32 =
             ((sas_raw[0] as u32) << 16) | ((sas_raw[1] as u32) << 8) | (sas_raw[2] as u32);
         let sas = sas_u32 % 1_000_000;
 
-        Ok(SessionKey::new(key, nonce_prefix, sas))
+        // Emoji SAS = 6 separate bytes; the Kotlin side masks each with
+        // 0x3F to index into a 64-emoji palette. Sourced from a distinct
+        // HKDF slice so the decimal and emoji SAS reveal independent
+        // bits of the shared secret.
+        let emoji_offset = sas_offset + SAS_LEN;
+        let mut sas_emoji = [0u8; SAS_EMOJI_LEN];
+        sas_emoji.copy_from_slice(&okm[emoji_offset..emoji_offset + SAS_EMOJI_LEN]);
+
+        Ok(SessionKey::new(key, nonce_prefix, sas, sas_emoji))
     }
 }
 
@@ -165,6 +179,8 @@ mod tests {
         let bob_session = bob.derive_session(alice_pub).unwrap();
 
         assert_eq!(alice_session.sas(), bob_session.sas());
+        assert_eq!(alice_session.sas_emoji(), bob_session.sas_emoji());
+        assert_eq!(alice_session.sas_emoji().len(), SAS_EMOJI_LEN);
     }
 
     #[test]

@@ -41,11 +41,41 @@ sealed interface ConnectionState {
         val negotiatedPhy: Int,
         /**
          * Sprint 4 D13 — 6-digit decimal SAS derived from the ECDH
-         * shared secret. The user reads it aloud to the remote peer for
-         * MITM verification. `0` while still resolving / pre-D13.
+         * shared secret. Kept around for logs / tests; the UI renders
+         * the emoji form below instead.
          */
         val sasCode: UInt = 0u,
-    ) : ConnectionState
+        /**
+         * Sprint 4 polish — 6 bytes (each indexes a 64-emoji palette
+         * after masking with `0x3F`). The user verifies that the same
+         * six animals / plants / weather glyphs appear on both phones.
+         */
+        val sasEmoji: ByteArray = ByteArray(0),
+    ) : ConnectionState {
+        // ByteArray-bearing data classes need manual equals/hashCode so
+        // recomposition doesn't fire on identical content arriving in a
+        // new instance.
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is PsmExchanged) return false
+            return role == other.role &&
+                peer == other.peer &&
+                psm == other.psm &&
+                negotiatedPhy == other.negotiatedPhy &&
+                sasCode == other.sasCode &&
+                sasEmoji.contentEquals(other.sasEmoji)
+        }
+
+        override fun hashCode(): Int {
+            var result = role.hashCode()
+            result = 31 * result + peer.hashCode()
+            result = 31 * result + psm
+            result = 31 * result + negotiatedPhy
+            result = 31 * result + sasCode.hashCode()
+            result = 31 * result + sasEmoji.contentHashCode()
+            return result
+        }
+    }
 
     /**
      * Call is live. The client thread is capturing → encoding → sending;
