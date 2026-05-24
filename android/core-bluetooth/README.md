@@ -41,6 +41,18 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 4 polish (shipped)
+- **Stats ticker** — instance-level coroutine samples
+  `JitterBuffer.stats()` every 1 s while `InCall`, pushes the snapshot
+  into `ConnectionState.InCall.jitterStats`. The UI renders a
+  `JitterDiagnosticsCard` (buffered/target depth, push/pop count, PLC
+  fires, late drops, duplicates).
+- **AEAD-flood disconnect** — `SessionEndReason.AeadFlood` variant.
+  Rx tracks `consecutiveDecryptFailures`; three in a row tear the
+  session down and `runDuplexCall` returns `Failed("Suspicious
+  traffic …")` without attempting a reconnect (the attacker can just
+  resume injection on the next socket).
+
 ## Sprint 4 D13 scope (shipped)
 - `GattServerHost.start` generates an ephemeral Curve25519 keypair and
   puts the pubkey into the handshake characteristic (was zero-padded

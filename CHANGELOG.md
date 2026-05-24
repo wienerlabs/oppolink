@@ -74,3 +74,19 @@ incompatible — the version byte hard-rejects on handshake.
   emoji from a 64-glyph palette, derived from a dedicated HKDF slice.
   An explicit "matches / doesn't match" confirmation tap that locks
   the call into the encrypted phase is queued for v0.2.
+
+### Sprint 4 polish (post-D15)
+
+- **Logo + redesigned README** with badges, quick start, and a
+  centered hero image (`docs/assets/oppolink-logo.webp`).
+- **Signal-style SAS emoji**: `SessionKey.sas_emoji() -> Vec<u8>`
+  feeds a 64-emoji palette in the Compose UI. Decimal SAS retained
+  as a fallback / log channel.
+- **In-call jitter diagnostics card** rendered below the InCallCard —
+  shows buffered/target depth, push/pop counts, PLC fires, late
+  arrivals, duplicates. Sampled once per second by an instance-level
+  coroutine.
+- **Three-strike AEAD-fail disconnect**: three consecutive decrypt
+  failures on a single session terminate the call with a "Suspicious
+  traffic" error. Single-bit RF flips don't trigger it; sustained
+  injection does. No automatic reconnect after this failure mode.

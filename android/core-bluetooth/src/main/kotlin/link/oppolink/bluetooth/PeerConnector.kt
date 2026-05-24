@@ -21,9 +21,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import link.oppolink.audio.AudioCapture
@@ -106,6 +109,7 @@ internal class RealPeerConnector(
     private var serverHost: GattServerHost? = null
     private var connectJob: Job? = null
     private var passiveAcceptThread: Thread? = null
+    private var statsTickerJob: Job? = null
 
     /**
      * Sprint 4 D12 — push-to-talk mute flag. Owned at instance scope so
@@ -246,6 +250,7 @@ internal class RealPeerConnector(
 
     fun shutdown() {
         scope.cancel()
+        stopStatsTicker()
         passiveAcceptThread?.interrupt()
         passiveAcceptThread = null
         runCatching { serverHost?.stop() }
@@ -326,6 +331,15 @@ internal class RealPeerConnector(
 
         /** Tx or Rx hit an `IOException` — the L2CAP socket is gone. */
         SocketLost,
+
+        /**
+         * Rx saw [AEAD_FAILURE_THRESHOLD] consecutive ChaCha20-Poly1305
+         * verification failures. Either the peer's [SessionKey] has
+         * drifted from ours (unlikely; ECDH is deterministic) or an
+         * attacker is injecting tampered frames. Either way we hang up
+         * and refuse to reconnect.
+         */
+        AeadFlood,
     }
 
     /**
@@ -388,6 +402,19 @@ internal class RealPeerConnector(
 
                 when (reason) {
                     SessionEndReason.Normal -> break@outer
+
+                    SessionEndReason.AeadFlood -> {
+                        // Three consecutive AEAD failures — give up the
+                        // whole call. Reconnecting would use the same
+                        // SessionKey against the same attacker.
+                        _state.value = ConnectionState.Failed(
+                            peer = peer,
+                            reason = "Suspicious traffic — call terminated after " +
+                                "$AEAD_FAILURE_THRESHOLD consecutive AEAD failures.",
+                            role = role,
+                        )
+                        return
+                    }
 
                     SessionEndReason.SocketLost -> {
                         // Server side: bail out and let the passive accept
@@ -456,6 +483,7 @@ internal class RealPeerConnector(
         var playbackThread: Thread? = null
 
         try {
+            startStatsTicker(jitterBuffer)
             L2capChannel(socket).use { channel ->
                 txThread = startTxThread(
                     channel = channel,
@@ -500,12 +528,38 @@ internal class RealPeerConnector(
             }
         } finally {
             running.set(false)
+            stopStatsTicker()
             txThread?.interrupt()
             rxThread?.interrupt()
             playbackThread?.interrupt()
         }
 
         return sessionReason.get()
+    }
+
+    /**
+     * Sample the jitter buffer's [JitterStats] once per second and push
+     * the snapshot into the live [ConnectionState.InCall]. The state-flow
+     * `update` is no-op when the state has moved past InCall (e.g.
+     * Reconnecting), so this ticker can safely outlive a single session.
+     */
+    private fun startStatsTicker(jitterBuffer: JitterBuffer) {
+        statsTickerJob?.cancel()
+        statsTickerJob = scope.launch {
+            while (isActive) {
+                delay(STATS_INTERVAL_MS)
+                val snap = jitterBuffer.stats()
+                _state.update { current ->
+                    if (current is ConnectionState.InCall) current.copy(jitterStats = snap)
+                    else current
+                }
+            }
+        }
+    }
+
+    private fun stopStatsTicker() {
+        statsTickerJob?.cancel()
+        statsTickerJob = null
     }
 
     /**
@@ -640,6 +694,7 @@ internal class RealPeerConnector(
     ): Thread = Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val lenBuf = ByteArray(2)
+        var consecutiveDecryptFailures = 0
         while (running.get()) {
             try {
                 channel.receiveExact(lenBuf)
@@ -651,14 +706,30 @@ internal class RealPeerConnector(
                 val frameBuf = ByteArray(frameLen)
                 channel.receiveExact(frameBuf)
                 // Sprint 4 D13 — AEAD-decrypt the frame. Tag mismatch or
-                // truncation means a tampered or wrong-key packet; drop it
-                // and keep going (the jitter buffer PLCs the gap).
+                // truncation means a tampered or wrong-key packet; drop
+                // it and the jitter buffer PLCs the gap. After
+                // [AEAD_FAILURE_THRESHOLD] in a row we treat it as
+                // hostile and terminate the session (Sprint 4 polish).
                 val decrypted = try {
                     sessionKey.decryptFrame(frameBuf)
                 } catch (t: Throwable) {
-                    Log.w(TAG, "decrypt failed: ${t.message}; dropping frame")
+                    consecutiveDecryptFailures++
+                    Log.w(
+                        TAG,
+                        "decrypt failed ($consecutiveDecryptFailures/$AEAD_FAILURE_THRESHOLD): " +
+                            "${t.message}; dropping frame",
+                    )
+                    if (consecutiveDecryptFailures >= AEAD_FAILURE_THRESHOLD) {
+                        Log.w(TAG, "AEAD-flood threshold reached; tearing down session")
+                        sessionReason.compareAndSet(
+                            SessionEndReason.Normal,
+                            SessionEndReason.AeadFlood,
+                        )
+                        break
+                    }
                     continue
                 }
+                consecutiveDecryptFailures = 0
                 jitterBuffer.push(decrypted.header.seq, decrypted.opusPacket)
             } catch (e: IOException) {
                 Log.i(TAG, "Rx closing — L2CAP socket lost: ${e.message}")
@@ -750,5 +821,16 @@ internal class RealPeerConnector(
 
         /** Sprint 4 D12 — sleep duration per Tx tick while the mic is muted. */
         const val MUTED_TICK_MS = 20L
+
+        /** Sprint 4 polish — jitter-stats sampling cadence. */
+        const val STATS_INTERVAL_MS = 1_000L
+
+        /**
+         * Sprint 4 polish — consecutive AEAD failures before we treat the
+         * stream as hostile and end the call. Three is the standard
+         * Signal-style threshold; loud enough to catch attackers but
+         * tolerant of a single bit-flip on a noisy radio.
+         */
+        const val AEAD_FAILURE_THRESHOLD = 3
     }
 }

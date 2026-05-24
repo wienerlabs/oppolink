@@ -36,6 +36,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import link.oppolink.bluetooth.ConnectionState
 import link.oppolink.bluetooth.Peer
+import uniffi.oppolink_protocol.JitterStats
 
 @Composable
 fun ConnectionScreen(
@@ -81,8 +82,9 @@ fun ConnectionScreen(
             }
             when (state) {
                 is ConnectionState.InCall -> {
+                    val inCall = state as ConnectionState.InCall
                     InCallCard(
-                        inCall = state as ConnectionState.InCall,
+                        inCall = inCall,
                         pttMode = pttMode,
                         onPttModeChange = { pttMode = it },
                         modifier = Modifier.fillMaxWidth(),
@@ -93,6 +95,10 @@ fun ConnectionScreen(
                             onHoldEnd = { viewModel.setMuted(true) },
                         )
                     }
+                    JitterDiagnosticsCard(
+                        stats = inCall.jitterStats,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
                 is ConnectionState.CallEnded -> CallEndedCard(
                     ended = state as ConnectionState.CallEnded,
@@ -283,13 +289,40 @@ private fun CallEndedCard(ended: ConnectionState.CallEnded, modifier: Modifier =
 }
 
 @Composable
-private fun Stat(name: String, value: Int) {
+private fun Stat(name: String, value: Int) = Stat(name, value.toString())
+
+@Composable
+private fun Stat(name: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(name, style = MaterialTheme.typography.bodyMedium)
-        Text(value.toString(), style = MaterialTheme.typography.bodyMedium)
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun JitterDiagnosticsCard(stats: JitterStats?, modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Jitter buffer", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            if (stats == null) {
+                Text(
+                    "Warming up…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                return@Card
+            }
+            Stat("buffered / target", "${stats.buffered} / ${stats.targetDepth}")
+            Stat("pushes", stats.pushCount.toString())
+            Stat("pops", stats.popCount.toString())
+            Stat("PLC fires", stats.plcCount.toString())
+            Stat("late drops", stats.lateArrivalCount.toString())
+            Stat("duplicates", stats.duplicateCount.toString())
+        }
     }
 }
 

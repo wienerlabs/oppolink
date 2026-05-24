@@ -1,5 +1,6 @@
 package link.oppolink.bluetooth
 
+import uniffi.oppolink_protocol.JitterStats
 import uniffi.oppolink_protocol.Role
 
 /**
@@ -96,6 +97,12 @@ sealed interface ConnectionState {
         val framesSent: Int,
         val framesReceived: Int,
         val muted: Boolean = false,
+        /**
+         * Sprint 4 polish — sampled once per second by the connector's
+         * stats ticker. `null` until the first sample lands; the UI
+         * shows a "warming up" placeholder until then.
+         */
+        val jitterStats: JitterStats? = null,
     ) : ConnectionState
 
     /**
