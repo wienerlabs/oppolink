@@ -41,6 +41,26 @@ L2CAP CoC socket lifecycle.
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
+## Sprint 3 D11 scope (shipped)
+- `ConnectionState.Reconnecting(role, peer, psm, attempt)` — new
+  variant for the 5-second reopen window.
+- `PeerConnector.runDuplexCall` refactored into an outer reconnect loop
+  + an inner `runDuplexSession` that owns the socket-bound threads.
+  `SessionEndReason { Normal, SocketLost }` is the contract; Tx and Rx
+  both `compareAndSet` it from `Normal → SocketLost` on `IOException`.
+- Client side: on SocketLost (and inside the call deadline if any),
+  `attemptReconnect(peer, psm)` polls `client.openL2capSocket` every
+  500 ms for up to 5 s. Success → resume; timeout → `Failed`.
+- Server side: `OppoLinkAccept` thread is now an `accept` loop —
+  `accept()` → `runDuplexCall` → on SocketLost loops back to `accept`,
+  so a fresh client connection rebinds the same listener.
+- Audio resources (`AudioCapture` / `AudioPlayback`) live in the outer
+  loop, so a reconnect doesn't re-prime the mic / re-open the speaker.
+  Encoder / decoder / jitter buffer are reset per session so libopus
+  state doesn't drift across the gap.
+- `seq` continues from the per-call `framesSent` counter — the peer's
+  signed-delta arithmetic accepts the resumed stream as future frames.
+
 ## Sprint 3 D9 scope (shipped — `:app` side)
 - `:app/.../service/CallForegroundService` owns the call lifecycle when
   the screen turns off. Reads the current peer from `connector.state`

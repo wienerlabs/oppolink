@@ -214,19 +214,26 @@ internal class RealPeerConnector(
     private fun startPassiveAcceptThread(host: GattServerHost) {
         passiveAcceptThread?.interrupt()
         passiveAcceptThread = Thread({
-            val socket = host.acceptL2cap() ?: return@Thread
-            val remotePeer = synthesizeRemotePeer(socket)
-            try {
-                runDuplexCall(
-                    socket = socket,
-                    role = Role.SERVER,
-                    peer = remotePeer,
-                    psm = host.psm(),
-                    phy = 0, // PHY readback only runs on the client during fetchHandshake
-                    durationMs = null,
-                )
-            } catch (t: Throwable) {
-                Log.w(TAG, "server duplex call failed: ${t.message}")
+            // Accept loop (Sprint 3 D11). After a SocketLost we drop back
+            // here and wait for the client to reconnect — `runDuplexCall`
+            // on the server side does not reconnect itself; the listening
+            // socket on `GattServerHost` is what the client re-opens
+            // against.
+            while (!Thread.currentThread().isInterrupted) {
+                val socket = host.acceptL2cap() ?: break
+                val remotePeer = synthesizeRemotePeer(socket)
+                try {
+                    runDuplexCall(
+                        socket = socket,
+                        role = Role.SERVER,
+                        peer = remotePeer,
+                        psm = host.psm(),
+                        phy = 0, // PHY readback only runs on the client during fetchHandshake
+                        durationMs = null,
+                    )
+                } catch (t: Throwable) {
+                    Log.w(TAG, "server duplex call failed: ${t.message}")
+                }
             }
         }, "OppoLinkAccept").apply {
             priority = Thread.MAX_PRIORITY
@@ -256,6 +263,19 @@ internal class RealPeerConnector(
     }
 
     /**
+     * Reason a single duplex session exited. Surfaced via an
+     * `AtomicReference` from the Tx / Rx threads so the outer reconnect
+     * loop in [runDuplexCall] can decide whether to retry.
+     */
+    private enum class SessionEndReason {
+        /** Tx finished cleanly — duration elapsed or [running] flipped. */
+        Normal,
+
+        /** Tx or Rx hit an `IOException` — the L2CAP socket is gone. */
+        SocketLost,
+    }
+
+    /**
      * Symmetric duplex pipeline shared by client and server.
      *
      * Three dedicated [Thread]s run at `URGENT_AUDIO`:
@@ -266,9 +286,12 @@ internal class RealPeerConnector(
      *   - **Playback** ticks against the jitter buffer: `pop_next()` yields
      *     a packet to decode, a `Plc` request, or `Empty` during prewarm.
      *
-     * Decoupling Rx from playback (Sprint 3 D8) means receive jitter no
-     * longer translates into playback jitter — out-of-order frames are
-     * reassembled, late arrivals dropped, missing frames PLC'd.
+     * **Reconnect** (Sprint 3 D11): the outer loop owns audio +
+     * encoder/decoder + jitter buffer lifecycles, the inner
+     * [runDuplexSession] owns the socket-bound threads. On
+     * [SessionEndReason.SocketLost] (client role only), the outer loop
+     * tries [attemptReconnect] for up to [RECONNECT_DEADLINE_MS]. Server
+     * side relies on the passive accept loop to pick the reconnect up.
      */
     @SuppressLint("MissingPermission")
     private fun runDuplexCall(
@@ -283,18 +306,96 @@ internal class RealPeerConnector(
         val playback = AudioPlayback()
         val framesSent = AtomicInteger(0)
         val framesReceived = AtomicInteger(0)
+        val callDeadlineNs: Long? = durationMs?.let { System.nanoTime() + it * 1_000_000L }
+        var attempt = 0
+        var currentSocket: BluetoothSocket = socket
+
+        try {
+            capture.prepare(); capture.start()
+            playback.prepare(); playback.start()
+
+            outer@ while (true) {
+                val reason = runDuplexSession(
+                    socket = currentSocket,
+                    capture = capture,
+                    playback = playback,
+                    role = role,
+                    peer = peer,
+                    psm = psm,
+                    phy = phy,
+                    framesSent = framesSent,
+                    framesReceived = framesReceived,
+                    callDeadlineNs = callDeadlineNs,
+                )
+
+                when (reason) {
+                    SessionEndReason.Normal -> break@outer
+
+                    SessionEndReason.SocketLost -> {
+                        // Server side: bail out and let the passive accept
+                        // loop re-accept; the client owns reconnect.
+                        if (role != Role.CLIENT) break@outer
+                        if (callDeadlineNs != null && System.nanoTime() >= callDeadlineNs) break@outer
+
+                        attempt++
+                        _state.value = ConnectionState.Reconnecting(role, peer, psm, attempt)
+                        val newSocket = attemptReconnect(peer, psm)
+                        if (newSocket == null) {
+                            _state.value = ConnectionState.Failed(
+                                peer = peer,
+                                reason = "L2CAP reconnect timed out after ${RECONNECT_DEADLINE_MS}ms",
+                                role = role,
+                            )
+                            return
+                        }
+                        currentSocket = newSocket
+                    }
+                }
+            }
+        } finally {
+            runCatching { capture.stop() }; runCatching { capture.close() }
+            runCatching { playback.stop() }; runCatching { playback.close() }
+        }
+
+        _state.value = ConnectionState.CallEnded(
+            role = role,
+            peer = peer,
+            psm = psm,
+            framesSent = framesSent.get(),
+            framesReceived = framesReceived.get(),
+        )
+    }
+
+    /**
+     * Inner half of [runDuplexCall]: one socket, one set of codec / jitter
+     * state, three threads. Returns the reason this session ended. Encoder
+     * + decoder + jitter buffer are reset every session so re-encoding
+     * after a reconnect doesn't carry over Opus internal state that the
+     * peer has lost.
+     */
+    @SuppressLint("MissingPermission")
+    private fun runDuplexSession(
+        socket: BluetoothSocket,
+        capture: AudioCapture,
+        playback: AudioPlayback,
+        role: Role,
+        peer: Peer,
+        psm: Int,
+        phy: Int,
+        framesSent: AtomicInteger,
+        framesReceived: AtomicInteger,
+        callDeadlineNs: Long?,
+    ): SessionEndReason {
+        val encoder = VoipEncoder()
+        val decoder = VoipDecoder()
+        val jitterBuffer = JitterBuffer()
         val running = AtomicBoolean(true)
+        val sessionReason = AtomicReference(SessionEndReason.Normal)
         var txThread: Thread? = null
         var rxThread: Thread? = null
         var playbackThread: Thread? = null
 
         try {
-            val encoder = VoipEncoder()
-            val decoder = VoipDecoder()
-            val jitterBuffer = JitterBuffer()
-            capture.prepare(); capture.start()
-            playback.prepare(); playback.start()
-
             L2capChannel(socket).use { channel ->
                 txThread = startTxThread(
                     channel = channel,
@@ -307,12 +408,14 @@ internal class RealPeerConnector(
                     framesSent = framesSent,
                     framesReceived = framesReceived,
                     running = running,
-                    durationMs = durationMs,
+                    callDeadlineNs = callDeadlineNs,
+                    sessionReason = sessionReason,
                 )
                 rxThread = startRxThread(
                     channel = channel,
                     jitterBuffer = jitterBuffer,
                     running = running,
+                    sessionReason = sessionReason,
                 )
                 playbackThread = startPlaybackThread(
                     decoder = decoder,
@@ -327,11 +430,6 @@ internal class RealPeerConnector(
                     running = running,
                 )
 
-                // Tx exits when its duration is up (client) or when send fails
-                // (server, because the socket got closed). Rx exits when the
-                // inputStream returns EOF. Wait for Tx, then close the socket
-                // so Rx unblocks, then give the playback thread a grace window
-                // to drain any frames still buffered.
                 txThread?.join()
                 running.set(false)
                 runCatching { socket.close() }
@@ -340,20 +438,37 @@ internal class RealPeerConnector(
             }
         } finally {
             running.set(false)
-            runCatching { capture.stop() }; runCatching { capture.close() }
-            runCatching { playback.stop() }; runCatching { playback.close() }
             txThread?.interrupt()
             rxThread?.interrupt()
             playbackThread?.interrupt()
         }
 
-        _state.value = ConnectionState.CallEnded(
-            role = role,
-            peer = peer,
-            psm = psm,
-            framesSent = framesSent.get(),
-            framesReceived = framesReceived.get(),
-        )
+        return sessionReason.get()
+    }
+
+    /**
+     * Try to reopen the L2CAP socket against the same PSM, polling every
+     * 500 ms until [RECONNECT_DEADLINE_MS] elapses. Returns the freshly
+     * connected socket or `null` on timeout.
+     */
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun attemptReconnect(peer: Peer, psm: Int): BluetoothSocket? {
+        val deadlineNs = System.nanoTime() + RECONNECT_DEADLINE_MS * 1_000_000L
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                return client.openL2capSocket(peer, psm)
+            } catch (t: Throwable) {
+                Log.d(TAG, "reconnect attempt failed: ${t.message}; will retry")
+                try {
+                    Thread.sleep(RECONNECT_BACKOFF_MS)
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return null
+                }
+            }
+        }
+        return null
     }
 
     private fun startTxThread(
@@ -367,13 +482,17 @@ internal class RealPeerConnector(
         framesSent: AtomicInteger,
         framesReceived: AtomicInteger,
         running: AtomicBoolean,
-        durationMs: Long?,
+        callDeadlineNs: Long?,
+        sessionReason: AtomicReference<SessionEndReason>,
     ): Thread = Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val pcm = ShortArray(capture.frameSamples)
-        var seq: Int = 0
-        var tsTicks: Int = 0
-        val deadlineNs: Long = durationMs?.let { System.nanoTime() + it * 1_000_000L } ?: Long.MAX_VALUE
+        // Seq + ts continue from the per-call counters so a reconnect
+        // doesn't reset the wire stream — the peer's jitter buffer
+        // still uses signed-delta arithmetic to order frames.
+        var seq: Int = framesSent.get() and 0xFFFF
+        var tsTicks: Int = framesSent.get() and 0xFFFF
+        val deadlineNs: Long = callDeadlineNs ?: Long.MAX_VALUE
 
         while (running.get() && System.nanoTime() < deadlineNs) {
             val read = capture.readFrame(pcm)
@@ -400,7 +519,8 @@ internal class RealPeerConnector(
                 channel.send(lenPrefix)
                 channel.send(framed)
             } catch (e: IOException) {
-                Log.i(TAG, "Tx closing: ${e.message}")
+                Log.i(TAG, "Tx closing — L2CAP socket lost: ${e.message}")
+                sessionReason.compareAndSet(SessionEndReason.Normal, SessionEndReason.SocketLost)
                 break
             }
             seq = (seq + 1) and 0xFFFF
@@ -424,6 +544,7 @@ internal class RealPeerConnector(
         channel: L2capChannel,
         jitterBuffer: JitterBuffer,
         running: AtomicBoolean,
+        sessionReason: AtomicReference<SessionEndReason>,
     ): Thread = Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val lenBuf = ByteArray(2)
@@ -440,7 +561,8 @@ internal class RealPeerConnector(
                 val parsed = parseAudioFrame(frameBuf)
                 jitterBuffer.push(parsed.header.seq, parsed.opusPacket)
             } catch (e: IOException) {
-                Log.i(TAG, "Rx closing: ${e.message}")
+                Log.i(TAG, "Rx closing — L2CAP socket lost: ${e.message}")
+                sessionReason.compareAndSet(SessionEndReason.Normal, SessionEndReason.SocketLost)
                 break
             }
         }
@@ -519,5 +641,11 @@ internal class RealPeerConnector(
         const val MAX_WIRE_FRAME = 1504
         /** Time we wait for Rx to drain before forcibly tearing down. */
         const val SHUTDOWN_GRACE_MS = 1_500L
+
+        /** Sprint 3 D11 — reconnect window before giving up on the call. */
+        const val RECONNECT_DEADLINE_MS = 5_000L
+
+        /** Polling interval inside [attemptReconnect]. */
+        const val RECONNECT_BACKOFF_MS = 500L
     }
 }

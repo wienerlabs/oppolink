@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-24 after Sprint 3 D10 shipped (CI verify deferred — wienerlabs org Actions billing).
+Last updated: 2026-05-24 after **Sprint 3 closed** (D8 + D9 + D10 + D11; CI verify deferred — wienerlabs org Actions billing).
 
 ---
 
@@ -22,7 +22,8 @@ Last updated: 2026-05-24 after Sprint 3 D10 shipped (CI verify deferred — wien
 | D7 | AEC validation Reno 11 / Find X7 | _hardware-pending_ | n/a | speaker-phone howl test; no code change required |
 | D8 | Adaptive jitter buffer + PLC | `3938a69` | _billing-blocked_ | `oppolink-jitter` crate + UniFFI Object; Rx → JB → Play thread split |
 | D9 | Foreground service + persistent notification | `58ff599` | _billing-blocked_ | survives screen-off; "End call" notification action; mm:ss ticker |
-| D10 | ColorOS battery whitelist wizard | _pending — see commit row_ | _billing-blocked_ | reflective version detect; first-run wizard; OEM intents fall back to platform Settings |
+| D10 | ColorOS battery whitelist wizard | `b615cc2` | _billing-blocked_ | reflective version detect; first-run wizard; OEM intents fall back to platform Settings |
+| D11 | Reconnect on drop (5 s window) | _pending — see commit row_ | _billing-blocked_ | client reopen loop on cached PSM; server accept loop |
 
 ---
 
@@ -248,10 +249,36 @@ Open follow-ups:
   (currently one-shot). Add when there's a settings screen for the
   v1.x release polish pass.
 
-### D11 — Reconnect on drop
-- If the L2CAP socket breaks during a call, attempt a single reconnect
-  on the cached PSM within 5 s before terminating. After that, drop to
-  Idle and surface "Call dropped — peer out of range?".
+### D11 — Reconnect on drop (shipped)
+
+What landed:
+- `ConnectionState.Reconnecting(role, peer, psm, attempt)` carries the
+  attempt counter so the UI can render "Reconnecting (attempt 3)".
+- `PeerConnector` split into outer reconnect loop + inner
+  `runDuplexSession`. `SessionEndReason { Normal, SocketLost }` flows
+  back via an `AtomicReference` written from Tx / Rx on `IOException`.
+- Client `attemptReconnect(peer, psm)` polls `openL2capSocket` every
+  500 ms up to the 5 s deadline. On success the outer loop reuses the
+  same audio resources and re-spawns the per-session encoder / decoder
+  / jitter buffer. On timeout we push `Failed` with a precise message.
+- Server `OppoLinkAccept` thread became an `accept` loop — when the
+  client tears the socket down, the server's `runDuplexCall` returns
+  on `SocketLost`, the outer thread loops back to `host.acceptL2cap()`,
+  and the next client reconnect binds against the same listener.
+- `seq` / `ts` resume from `framesSent.get()` so the peer's jitter
+  buffer sees the resumed stream as future frames (signed-delta arith
+  accepts wraparound and gaps).
+- UI: ConnectionScreen describes the new state inline; Footer keeps
+  the "End call" button live during Reconnecting so the user can give
+  up early.
+
+Open follow-ups:
+- Telemetry: count reconnect attempts per session so we can tune the
+  500 ms backoff if Tier 1 hardware shows we're hammering the radio.
+- Listening server PSM can sometimes be rejected by ColorOS after a
+  forced disconnect; if that happens we may need to reallocate the
+  server socket on stop+restart. Watch out during D9 + D11 hardware
+  testing.
 
 ---
 

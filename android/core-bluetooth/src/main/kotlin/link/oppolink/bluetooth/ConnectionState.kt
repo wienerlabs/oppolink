@@ -56,6 +56,19 @@ sealed interface ConnectionState {
         val framesReceived: Int,
     ) : ConnectionState
 
+    /**
+     * Sprint 3 D11 — the L2CAP socket broke (peer briefly out of range,
+     * radio glitch); we're trying to bring it back with the cached PSM.
+     * `attempt` increments each retry; the window caps at 5 seconds
+     * before flipping to [Failed].
+     */
+    data class Reconnecting(
+        val role: Role,
+        val peer: Peer,
+        val psm: Int,
+        val attempt: Int,
+    ) : ConnectionState
+
     /** Call ended normally (peer hung up, user cancelled, end of test loop). */
     data class CallEnded(
         val role: Role,

@@ -187,7 +187,8 @@ private fun Footer(
 ) {
     val canStartCall =
         state is ConnectionState.PsmExchanged || state is ConnectionState.CallEnded
-    val isInCall = state is ConnectionState.InCall
+    val isInCall =
+        state is ConnectionState.InCall || state is ConnectionState.Reconnecting
     val isTerminal = state is ConnectionState.PsmExchanged ||
         state is ConnectionState.CallEnded ||
         state is ConnectionState.Failed ||
@@ -245,6 +246,11 @@ private fun describe(state: ConnectionState): Triple<String, String, Boolean> = 
     is ConnectionState.InCall -> Triple(
         "Call live",
         "Capture ⇄ Opus ⇄ L2CAP ⇄ playback on both ends.",
+        false,
+    )
+    is ConnectionState.Reconnecting -> Triple(
+        "Reconnecting (attempt ${state.attempt})",
+        "L2CAP socket dropped — reopening on PSM ${state.psm} for up to 5 s.",
         false,
     )
     is ConnectionState.CallEnded -> Triple(

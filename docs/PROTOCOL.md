@@ -143,6 +143,11 @@ Opus packet:
   wire format is **unchanged** — the buffer is a pure receiver-side
   concern that handles reordering, dedup, and PLC trigger. Adaptive
   depth lives in 40–100 ms range (2–5 frames).
+- **Reconnect** (Sprint 3 D11): when the L2CAP socket breaks the client
+  reopens against the **same cached PSM** — the handshake is not
+  re-run. The wire stream resumes with the next `seq` so the peer's
+  jitter buffer treats the gap as PLC frames. If the reconnect window
+  (5 s) elapses, the session ends and a fresh handshake is needed.
 - `ts` wraps every ~21 minutes — receivers MUST tolerate wrap-around.
 - `seq` increments per peer-direction, starting at 0 on session start. The
   receiver uses `seq` for jitter buffer ordering and PLC trigger detection.
