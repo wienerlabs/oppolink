@@ -1,5 +1,6 @@
 package link.oppolink.discovery
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,6 +77,30 @@ fun ConnectionScreen(
             viewModel.setMuted(false)
             viewModel.cancel()
         }
+    }
+
+    // System back during a live call should not just drop the audio
+    // path; surface the same confirm prompt the End call button uses.
+    // For all other states (Connecting, Handshaking, PsmExchanged,
+    // Reconnecting, CallEnded, Failed, Idle) the back gesture pops
+    // back to Discovery via the supplied callback.
+    var backConfirm by remember { mutableStateOf(false) }
+    BackHandler {
+        if (state is ConnectionState.InCall) {
+            backConfirm = true
+        } else {
+            onBack()
+        }
+    }
+    if (backConfirm) {
+        EndCallConfirmDialog(
+            onConfirm = {
+                backConfirm = false
+                viewModel.cancel()
+                onBack()
+            },
+            onDismiss = { backConfirm = false },
+        )
     }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
@@ -514,27 +539,43 @@ private fun EndCallButton(
     }
 
     if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("End the call?") },
-            text = {
-                Text(
-                    "Hanging up closes the L2CAP channel and drops the " +
-                        "encrypted session key. You will need to rerun the " +
-                        "SAS verification to reconnect.",
-                )
+        EndCallConfirmDialog(
+            onConfirm = {
+                showDialog = false
+                onConfirm()
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDialog = false
-                    onConfirm()
-                }) { Text("End call") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
-            },
+            onDismiss = { showDialog = false },
         )
     }
+}
+
+/**
+ * Shared confirm dialog used by the End-call button and the system
+ * back-gesture handler. Kept in one place so the copy + button labels
+ * never drift between the two entry points.
+ */
+@Composable
+private fun EndCallConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("End the call?") },
+        text = {
+            Text(
+                "Hanging up closes the L2CAP channel and drops the " +
+                    "encrypted session key. You will need to rerun the " +
+                    "SAS verification to reconnect.",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("End call") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 private fun phyLabel(phy: Int): String = when (phy) {
