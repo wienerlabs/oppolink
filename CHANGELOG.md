@@ -151,3 +151,13 @@ incompatible - the version byte hard-rejects on handshake.
   meter no longer flickers at every 20 ms audio frame boundary; the
   numeric readout next to the bar stays raw so power users can read
   instantaneous peaks.
+- **BackHandler on ConnectionScreen**: the system back gesture during
+  a live call now surfaces the same `EndCallConfirmDialog` the in-app
+  button uses; pre-call / post-call states still pop straight back to
+  Discovery. Dialog composable is shared so copy never drifts between
+  the two entry points.
+- **`formatElapsed` JUnit coverage**: extracted out of the Service
+  into a pure `internal` function (`ElapsedFormatter.kt`) with
+  boundary tests for zero, sub-second, 59:59, hour spillover, multi-
+  hour, and negative-drift inputs. First unit-test entry in the
+  `:app` test source set.
