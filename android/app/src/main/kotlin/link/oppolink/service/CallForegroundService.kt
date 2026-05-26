@@ -53,6 +53,7 @@ import link.oppolink.bluetooth.PeerConnector
 class CallForegroundService : Service() {
 
     @Inject lateinit var connector: PeerConnector
+    @Inject lateinit var batteryProbe: link.oppolink.diagnostics.BatteryProbe
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var callJob: Job? = null
@@ -90,6 +91,11 @@ class CallForegroundService : Service() {
         startElapsedMs = SystemClock.elapsedRealtime()
         startForeground(NOTIFICATION_ID, buildNotification(peer.nickname, 0))
 
+        // Sprint 4 D14 instrumentation - capture battery drain across the
+        // entire call. Stops + summarises in handleStop / on natural call
+        // termination via the finally-block below.
+        batteryProbe.start(scope)
+
         tickerJob?.cancel()
         tickerJob = scope.launch {
             while (true) {
@@ -105,6 +111,7 @@ class CallForegroundService : Service() {
                 connector.runCall(peer, durationMs = null)
             } finally {
                 tickerJob?.cancel()
+                Log.i(TAG, "call ended: ${batteryProbe.stop()}")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -115,6 +122,7 @@ class CallForegroundService : Service() {
         connector.cancel()
         callJob?.cancel()
         tickerJob?.cancel()
+        Log.i(TAG, "stop action: ${batteryProbe.stop()}")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

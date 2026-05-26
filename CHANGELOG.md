@@ -96,3 +96,17 @@ incompatible - the version byte hard-rejects on handshake.
   wizard back on (`SetupViewModel.refresh()` picks the flip up on
   return). Privacy section spells out the "no telemetry / no network /
   no accounts" stance.
+- **Discovery list polish**: per-peer capability chips (PCM 16k, Opus,
+  AEAD) + "Ns ago" last-seen text help spot a pre-v2 peer at a glance.
+- **Em dash sweep**: project-wide `—` -> `-` replace; CLAUDE.md
+  anti-corpus picks up a "no em dash anywhere" rule lifted to a
+  global feedback on 2026-05-26.
+- **Reconnect telemetry**: `ConnectionState.CallEnded.reconnectAttempts`
+  surfaces the cumulative reconnect count on the CallEndedCard so the
+  D14 hardware test can correlate radio scheduling against call
+  resilience.
+- **BatteryProbe diagnostic** (D14 instrumentation): samples
+  `BATTERY_PROPERTY_CAPACITY` every 60 s while the foreground call
+  service is alive; logs a `X% -> Y% over Zs = N%/hour` summary on
+  call end. `adb logcat -s BatteryProbe` during the 30-min hardware
+  test captures it.
