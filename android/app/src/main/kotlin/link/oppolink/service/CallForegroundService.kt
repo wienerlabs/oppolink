@@ -203,19 +203,8 @@ class CallForegroundService : Service() {
         nm.notify(NOTIFICATION_ID, buildNotification(peerNick, elapsedMs, state))
     }
 
-    private fun formatElapsed(elapsedMs: Long): String {
-        // mm:ss for the first 59:59, then hh:mm:ss. Indefinite calls
-        // routinely cross the hour mark on the D14 battery test bench.
-        val totalSec = (elapsedMs / 1000).toInt()
-        val hh = totalSec / 3600
-        val mm = (totalSec % 3600) / 60
-        val ss = totalSec % 60
-        return if (hh > 0) {
-            "%d:%02d:%02d".format(hh, mm, ss)
-        } else {
-            "%02d:%02d".format(mm, ss)
-        }
-    }
+    // formatElapsed extracted to ElapsedFormatter.kt so unit tests can
+    // pin the boundary cases (under-hour, hour mark, multi-hour, zero).
 
     companion object {
         private const val TAG = "CallFgSvc"
