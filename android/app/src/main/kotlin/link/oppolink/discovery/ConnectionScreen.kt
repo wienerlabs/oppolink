@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -18,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,6 +36,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import link.oppolink.bluetooth.AudioLevels
 import link.oppolink.bluetooth.ConnectionState
 import link.oppolink.bluetooth.Peer
 import uniffi.oppolink_protocol.JitterStats
@@ -45,6 +48,7 @@ fun ConnectionScreen(
     viewModel: ConnectionViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val audioLevels by viewModel.audioLevels.collectAsStateWithLifecycle()
 
     // Sprint 4 D12 - push-to-talk mode toggle. UI-local state; the
     // ViewModel only sees `setMuted(true|false)` calls. When PTT mode
@@ -95,6 +99,10 @@ fun ConnectionScreen(
                             onHoldEnd = { viewModel.setMuted(true) },
                         )
                     }
+                    AudioLevelCard(
+                        levels = audioLevels,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     JitterDiagnosticsCard(
                         stats = inCall.jitterStats,
                         modifier = Modifier.fillMaxWidth(),
@@ -300,6 +308,40 @@ private fun Stat(name: String, value: String) {
     ) {
         Text(name, style = MaterialTheme.typography.bodyMedium)
         Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun AudioLevelCard(levels: AudioLevels, modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Audio level", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            LevelRow(label = "mic", level = levels.tx)
+            Spacer(Modifier.height(6.dp))
+            LevelRow(label = "peer", level = levels.rx)
+        }
+    }
+}
+
+@Composable
+private fun LevelRow(label: String, level: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.width(40.dp),
+        )
+        LinearProgressIndicator(
+            progress = { (level / 100f).coerceIn(0f, 1f) },
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "$level",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.width(32.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

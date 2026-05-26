@@ -54,8 +54,25 @@ import uniffi.oppolink_protocol.pcmSamplesPerFrame
  * is shared but `BluetoothSocket.inputStream` and `outputStream` are
  * independent at the OS level - see [L2capChannel] for the contract.
  */
+/**
+ * Sprint 4 polish - peak-meter snapshots for the live audio path,
+ * sampled per 20 ms frame.
+ *
+ * `tx` is the local mic peak (0..100), computed after [AudioCapture]
+ * hands a fresh PCM frame to the encoder; `rx` is the remote-decoded
+ * peak from the most recent jitter-buffer pop. A flat zero on `tx`
+ * during a call indicates mic mute or driver failure; a flat zero on
+ * `rx` indicates either peer silence or a dead L2CAP socket.
+ */
+data class AudioLevels(val tx: Int, val rx: Int) {
+    companion object { val ZERO = AudioLevels(0, 0) }
+}
+
 interface PeerConnector {
     val state: StateFlow<ConnectionState>
+
+    /** Per-frame Tx + Rx peak meters (0..100). Updates on every audio tick. */
+    val audioLevels: StateFlow<AudioLevels>
 
     /** Start the passive GATT-server + accept thread. Idempotent. */
     fun startPassiveServer(nickname: String)
@@ -104,6 +121,9 @@ internal class RealPeerConnector(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     override val state: StateFlow<ConnectionState> = _state.asStateFlow()
+
+    private val _audioLevels = MutableStateFlow(AudioLevels.ZERO)
+    override val audioLevels: StateFlow<AudioLevels> = _audioLevels.asStateFlow()
 
     private val client = GattClient(context, adapter)
     private var serverHost: GattServerHost? = null
@@ -443,6 +463,7 @@ internal class RealPeerConnector(
             runCatching { playback.stop() }; runCatching { playback.close() }
         }
 
+        _audioLevels.value = AudioLevels.ZERO
         _state.value = ConnectionState.CallEnded(
             role = role,
             peer = peer,
@@ -643,6 +664,11 @@ internal class RealPeerConnector(
                 Log.w(TAG, "AudioRecord underrun: $read/${pcm.size}; stopping Tx")
                 break
             }
+            // Sprint 4 polish - peak meter for the local mic. Integer-only,
+            // 320 iterations per 20 ms tick = trivially cheap; we publish
+            // the result on a separate StateFlow so the ConnectionState
+            // data-class doesn't churn on every frame.
+            _audioLevels.update { it.copy(tx = peakLevel(pcm)) }
             val opus = try {
                 encoder.encode(pcm.toList())
             } catch (t: Throwable) {
@@ -790,6 +816,9 @@ internal class RealPeerConnector(
             // UniFFI 0.28 hands us a Kotlin List even for a Vec<i16>; this
             // copy is unavoidable until we move to a custom UniFFI type.
             for (i in 0 until copyLen) pcmBuf[i] = pcmList[i]
+            // Peak meter for the remote stream (post-decode). Pre-decode
+            // bytes would be cipher noise and meaningless to the user.
+            _audioLevels.update { it.copy(rx = peakLevel(pcmBuf)) }
             playback.writeFrame(pcmBuf)
 
             val r = framesReceived.incrementAndGet()
@@ -805,6 +834,21 @@ internal class RealPeerConnector(
     }, "OppoLinkCallPlay").apply {
         priority = Thread.MAX_PRIORITY
         start()
+    }
+
+    /**
+     * Integer peak-meter computation over a 20 ms PCM frame. Returns
+     * `0..100` mapped from the largest absolute sample (0..32767). Inline
+     * for the hot path; no allocations, no float math.
+     */
+    private fun peakLevel(pcm: ShortArray): Int {
+        var peak = 0
+        for (i in pcm.indices) {
+            val s = pcm[i].toInt()
+            val a = if (s < 0) -s else s
+            if (a > peak) peak = a
+        }
+        return (peak * 100) / 32_768
     }
 
     private companion object {

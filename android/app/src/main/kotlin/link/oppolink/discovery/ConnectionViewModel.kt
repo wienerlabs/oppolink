@@ -10,6 +10,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import link.oppolink.bluetooth.AudioLevels
 import link.oppolink.bluetooth.ConnectionState
 import link.oppolink.bluetooth.Peer
 import link.oppolink.bluetooth.PeerConnector
@@ -31,6 +32,7 @@ class ConnectionViewModel @Inject constructor(
 ) : ViewModel() {
 
     val state: StateFlow<ConnectionState> = connector.state
+    val audioLevels: StateFlow<AudioLevels> = connector.audioLevels
 
     private var handshakeJob: Job? = null
 
