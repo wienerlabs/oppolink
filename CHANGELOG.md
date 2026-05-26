@@ -128,3 +128,26 @@ incompatible - the version byte hard-rejects on handshake.
   card covering the three pre-conditions that cover almost every
   field failure (other phone on Discovery, both within ~10 m,
   Bluetooth toggle actually on).
+- **Notification reflects call status**: the foreground service
+  notification reads `\$peerNick · 02:34 · Encrypted` while the call
+  is unmuted, `· Muted` while push-to-talk has the mic stopped, and
+  swaps to `OppoLink - reconnecting · Attempt N` on socket drop. The
+  ticker re-reads `connector.state` each second so there's no extra
+  state subscription.
+- **Elapsed format spills to hh:mm:ss past 60 min**: long calls
+  (D14 battery test, indefinite hangouts) now render `1:30:00`
+  instead of the clipped `90:00`.
+- **AGPL transparency rows in Settings**: tappable "View source code"
+  and "Read the license" rows in the About card hand off to the
+  system browser via `Intent.ACTION_VIEW`. The OppoLink process never
+  opens an internet socket; the browser is a separate process, so
+  the offline-only invariant stays intact.
+- **End-call confirm dialog**: the in-app End call button now opens
+  a Material AlertDialog while the call is live so a fat-finger tap
+  cannot drop the session key + L2CAP channel. Reconnecting state
+  skips the prompt because the socket is already gone.
+- **Audio meter smoothing**: the LinearProgressIndicator wraps its
+  progress fraction in `animateFloatAsState(tween(120ms))` so the
+  meter no longer flickers at every 20 ms audio frame boundary; the
+  numeric readout next to the bar stays raw so power users can read
+  instantaneous peaks.
