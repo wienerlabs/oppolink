@@ -1,4 +1,4 @@
-//! Sprint 4 D13 — Curve25519 ECDH + HKDF-SHA256 → ChaCha20-Poly1305.
+//! Sprint 4 D13 - Curve25519 ECDH + HKDF-SHA256 → ChaCha20-Poly1305.
 //!
 //! The handshake characteristic now carries each peer's **ephemeral
 //! 32-byte Curve25519 public key** (was zero-padded in v1). Both sides
@@ -13,7 +13,7 @@
 //! info is `b"oppolink/v2/aead"`. The protocol version byte in the
 //! handshake bumps to `0x02` for the AEAD-mandatory wire format.
 //!
-//! `EphemeralKeyPair` is a UniFFI Object — Android holds it briefly
+//! `EphemeralKeyPair` is a UniFFI Object - Android holds it briefly
 //! during the handshake; once `derive_session` runs the secret half is
 //! consumed (cleared on drop) and only the resulting [`SessionKey`]
 //! remains.
@@ -56,7 +56,7 @@ pub enum CryptoError {
 }
 
 /// Sprint 4 D13 ephemeral keypair. Generated fresh per call so a leaked
-/// session key never compromises past traffic — Perfect Forward Secrecy
+/// session key never compromises past traffic - Perfect Forward Secrecy
 /// per Signal-style design.
 ///
 /// `derive_session` is intentionally non-consuming: a Sprint 3 D11
@@ -87,7 +87,7 @@ impl EphemeralKeyPair {
     /// Perform ECDH against `peer_public_key` (32-byte Curve25519 pubkey
     /// pulled out of the peer's handshake message) and derive a
     /// [`SessionKey`]. Safe to call multiple times with the same peer
-    /// pubkey — the result is deterministic, which is what Sprint 3 D11
+    /// pubkey - the result is deterministic, which is what Sprint 3 D11
     /// reconnect relies on.
     pub fn derive_session(&self, peer_public_key: Vec<u8>) -> Result<Arc<SessionKey>, CryptoError> {
         if peer_public_key.len() != 32 {

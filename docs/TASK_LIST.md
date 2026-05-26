@@ -5,7 +5,7 @@ Persistent roadmap for any Claude Code session picking the project up. Holds
 no to**, and **open questions** that have to be answered before v1. Update
 this file at the end of every deliverable.
 
-Last updated: 2026-05-24 after **Sprint 4 closed** (D12 + D13 + D15; D14 hardware-pending; CI verify deferred — wienerlabs org Actions billing). **v0.1.0 build-ready.**
+Last updated: 2026-05-24 after **Sprint 4 closed** (D12 + D13 + D15; D14 hardware-pending; CI verify deferred - wienerlabs org Actions billing). **v0.1.0 build-ready.**
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: 2026-05-24 after **Sprint 4 closed** (D12 + D13 + D15; D14 hardwar
 | # | Deliverable | Commit | CI | Notes |
 | --- | --- | --- | --- | --- |
 | D1 | Multi-module skeleton + UniFFI hello_world | `dfd7c5c` | green | scaffold only |
-| D2 | BLE discovery (advertise + scan + UI) | `f41ae3c` | green | required 6 CI fixes — see "Burns" below |
+| D2 | BLE discovery (advertise + scan + UI) | `f41ae3c` | green | required 6 CI fixes - see "Burns" below |
 | D3 | GATT handshake + L2CAP PSM exchange | `12f5622` | green first-shot | UI-driven role |
 | D4 | L2CAP echo test, RTT <30 ms median | `6f7936a` | green first-shot | echo loops on dedicated Thread; real p50/p95 needs hardware |
 | D5 | One-way audio MVP (capture → Opus → L2CAP → playback) | `4653086` | green (1 fix) | libopus via `opus` 0.3.1; `.cargo/config.toml` pins `CMAKE_POLICY_VERSION_MINIMUM=3.5`; AudioError `detail` not `message` |
@@ -27,13 +27,13 @@ Last updated: 2026-05-24 after **Sprint 4 closed** (D12 + D13 + D15; D14 hardwar
 | D12 | Push-to-talk mode | `b1f242f` | _billing-blocked_ | mic hardware off via AudioRecord.stop; PTT toggle + hold-to-talk button |
 | D13 | Encryption (Curve25519 + ChaCha20-Poly1305) | `79037db` | _billing-blocked_ | **wire format v2 lock**; SAS code on PsmExchanged; HKDF-derived nonce prefix |
 | D14 | Battery profiling (<5%/hour on Reno 11) | _hardware-pending_ | n/a | needs Tier 1 device + 30-min test call |
-| D15 | Signed APK + GitHub release + F-Droid manifest | _pending — see commit row_ | _billing-blocked_ | release.yml triggered on v* tags; metadata/link.oppolink.yml; v0.1.0 ready |
+| D15 | Signed APK + GitHub release + F-Droid manifest | _pending - see commit row_ | _billing-blocked_ | release.yml triggered on v* tags; metadata/link.oppolink.yml; v0.1.0 ready |
 
 ---
 
-## Sprint 1 — Foundations (Week 1)
+## Sprint 1 - Foundations (Week 1)
 
-### D4 — L2CAP echo test (shipped)
+### D4 - L2CAP echo test (shipped)
 
 Open the L2CAP CoC socket on top of the PSM that D3 exchanges, send 1024-byte
 packets back and forth, measure round-trip latency. Target p50 <30 ms on LE
@@ -45,12 +45,12 @@ packets back and forth, measure round-trip latency. Target p50 <30 ms on LE
   `summarize_echo_samples` using nearest-rank percentile. Eight new unit
   tests; workspace at 31/31.
 - Kotlin `:core-bluetooth`:
-  - `L2capChannel` — blocking `send` / `receiveExact` over `BluetoothSocket`,
+  - `L2capChannel` - blocking `send` / `receiveExact` over `BluetoothSocket`,
     `AutoCloseable`.
-  - `GattServerHost.acceptL2cap()` — blocking accept on the listening L2CAP
+  - `GattServerHost.acceptL2cap()` - blocking accept on the listening L2CAP
     server socket; the server echo loop reads + mirrors 1024-byte packets
     until the client closes.
-  - `GattClient.openL2capSocket(peer, psm)` — client side `createInsecureL2capChannel`
+  - `GattClient.openL2capSocket(peer, psm)` - client side `createInsecureL2capChannel`
     + blocking `connect()`.
   - `GattClient.fetchHandshake` now snapshots negotiated PHY via
     `BluetoothGatt.readPhy()` and returns `GattHandshakeResult`.
@@ -62,7 +62,7 @@ packets back and forth, measure round-trip latency. Target p50 <30 ms on LE
 - Kotlin `:app`: `ConnectionScreen` gains "Run echo" button after
   `PsmExchanged`, `EchoResultCard` with p50 / p95 / min / max + LE 2M / 1M
   / Coded chip, `LinearProgressIndicator` while running. ViewModel
-  `runEcho(peer)` swallows exceptions — `PeerConnector` already publishes
+  `runEcho(peer)` swallows exceptions - `PeerConnector` already publishes
   the `Failed` state.
 - Docs: `PROTOCOL.md` "L2CAP echo packet" section locked,
   `core-bluetooth/README.md` D4 done section.
@@ -77,14 +77,14 @@ After two Tier 1 devices (Reno 11 / Find X7) are paired:
 
 ---
 
-## Sprint 2 — Audio MVP (Week 2)
+## Sprint 2 - Audio MVP (Week 2)
 
-### D5 — One-way audio (shipped)
+### D5 - One-way audio (shipped)
 
 What landed:
 - Rust `oppolink-codec`: `VoipEncoder` / `VoipDecoder` over the
   `opus = "0.3.1"` crate. 16 kHz mono, 20 ms frame, 24 kbps CBR,
-  complexity 5, FEC on, DTX off. Pre-allocated scratch buffers — the
+  complexity 5, FEC on, DTX off. Pre-allocated scratch buffers - the
   hot path encoder/decoder calls never allocate after construction. Six
   unit tests covering frame header roundtrip, silence/sine roundtrips,
   PLC, and PCM-length guard. Workspace at 34/34.
@@ -109,18 +109,18 @@ What landed:
   call"; new `InCallCard` (frames sent/received + PHY chip) and
   `CallEndedCard`. `ConnectionViewModel.startCall(peer)`.
 - Docs: `PROTOCOL.md` "Audio frame" section locked; v1 ships
-  **without AEAD** — Sprint 4 D13 reshapes the frame to wrap
+  **without AEAD** - Sprint 4 D13 reshapes the frame to wrap
   ChaCha20-Poly1305 around the Opus payload.
 
 Hardware testing: emulator has no L2CAP CoC; two Reno-class devices
 needed to validate end-to-end audio + AEC.
 
-### D6 — Full-duplex (shipped)
+### D6 - Full-duplex (shipped)
 
 What landed:
 - `PeerConnector` gained a `runDuplexCall(socket, role, peer, psm, phy, durationMs)`
   shared helper. Owns `AudioCapture` + `AudioPlayback` + `VoipEncoder` +
-  `VoipDecoder` lifecycle and spawns two threads — `OppoLinkCallTx`
+  `VoipDecoder` lifecycle and spawns two threads - `OppoLinkCallTx`
   (capture → Opus → L2CAP write) and `OppoLinkCallRx` (L2CAP read →
   Opus → AudioTrack), both at `Process.THREAD_PRIORITY_URGENT_AUDIO`.
 - Client side: `runCall(peer, durationMs)` opens the socket then hands
@@ -128,7 +128,7 @@ What landed:
   shutdown sequence (close socket → wait Rx briefly → tear down).
 - Server side: passive `OppoLinkAccept` thread now hands the accepted
   socket to `runDuplexCall(role=SERVER, durationMs=null)`. Runs until
-  the client closes — Rx exits on EOF and the cleanup path fires.
+  the client closes - Rx exits on EOF and the cleanup path fires.
 - `L2capChannel` docs the **one-sender / one-receiver** invariant:
   `BluetoothSocket.inputStream` and `outputStream` are independent OS
   handles so duplex needs no wrapper lock.
@@ -146,7 +146,7 @@ Open follow-ups (Sprint 3):
   Linux scheduling already favors the OS-managed audio path, but
   validate with `systrace` once we have a Tier 1 device.
 
-### D7 — AEC validation on Reno 11 / Find X7
+### D7 - AEC validation on Reno 11 / Find X7
 - Speaker-phone test in a small quiet room, mic 0.5 m / 1 m / 2 m.
 - Tolerable howling threshold: no echo coupling at 0.5 m at 70% volume.
 - Failure mode: fall back to mic + earpiece (no speaker) and surface a
@@ -154,9 +154,9 @@ Open follow-ups (Sprint 3):
 
 ---
 
-## Sprint 3 — ColorOS Hardening (Week 3)
+## Sprint 3 - ColorOS Hardening (Week 3)
 
-### D8 — Jitter buffer + PLC (shipped)
+### D8 - Jitter buffer + PLC (shipped)
 
 What landed:
 - `rust/oppolink-jitter` ships `JitterBuffer` with `BTreeMap<u16, Vec<u8>>`
@@ -188,17 +188,17 @@ Open follow-ups:
   remaining hot-path sleep; once we ship a `BlockingQueue`-style
   primitive in Rust the prewarm path can park instead.
 
-### D9 — Foreground service (shipped, `:app` side)
+### D9 - Foreground service (shipped, `:app` side)
 
 What landed:
 - `link.oppolink.service.CallForegroundService` (`@AndroidEntryPoint`)
   with notification channel `oppolink_calls` (IMPORTANCE_LOW). Ongoing
-  notification "OppoLink — call active mm:ss" updated every second by
+  notification "OppoLink - call active mm:ss" updated every second by
   a ticker coroutine; carries `CATEGORY_CALL` + "End call" action
   PendingIntent.
 - `foregroundServiceType="microphone"` in the Manifest (Android 14+
   requirement).
-- `PeerConnector.runCall` signature became `durationMs: Long? = null` —
+- `PeerConnector.runCall` signature became `durationMs: Long? = null` -
   the service passes `null` for indefinite duration. The legacy 10 s
   test call constant is renamed `SHORT_TEST_CALL_DURATION_MS`.
 - `ConnectionViewModel.startCall()` no longer drives the pipeline
@@ -207,19 +207,19 @@ What landed:
   so we don't have to parcel `Peer` through an `Intent`. `cancel()` and
   the notification both send `ACTION_STOP`.
 - `ConnectionScreen` `Footer` now shows "End call" while `InCall` and
-  hides the redundant "Cancel" button — the call is the cancel.
-- `ConnectionViewModel.onCleared()` deliberately does NOT cancel — the
+  hides the redundant "Cancel" button - the call is the cancel.
+- `ConnectionViewModel.onCleared()` deliberately does NOT cancel - the
   call must survive activity recreation.
 
 Open follow-ups:
 - The ticker uses `delay(1_000)` which on ColorOS will be coalesced by
   Doze on long calls; if minutes start drifting we can switch to an
   `AlarmManager` setExactAndAllowWhileIdle once Sprint 3 D11 lands.
-- Notification permission (API 33+) — the user can deny it; the call
+- Notification permission (API 33+) - the user can deny it; the call
   still runs but the foreground status indicator goes through the
   system "ongoing call" path instead of the custom notification.
 
-### D10 — ColorOS battery whitelist wizard (shipped)
+### D10 - ColorOS battery whitelist wizard (shipped)
 
 What landed:
 - `:coloros-compat/ColorOsSettings`:
@@ -236,9 +236,9 @@ What landed:
   - `SetupPreferences` SharedPreferences wrapper, single key
     `coloros_setup_complete`, Hilt `@Singleton`.
   - `SetupViewModel.openCapability` wraps `startActivity` in
-    `try/catch (ActivityNotFoundException | SecurityException)` — OEM
+    `try/catch (ActivityNotFoundException | SecurityException)` - OEM
     intent rot is the norm, not the exception.
-  - `ColorOsSetupScreen` (Compose) — four `CapabilityCard`s + "Skip" /
+  - `ColorOsSetupScreen` (Compose) - four `CapabilityCard`s + "Skip" /
     "All set" footer. Skipping and completing both write the same
     "wizard done" flag; the wizard never re-appears.
 - `MainScreen` flow: `PermissionGate → setup gate → DiscoveryScreen /
@@ -246,14 +246,14 @@ What landed:
   `isColorOs()`.
 
 Open follow-ups:
-- Per-version screenshot guidance (ColorOS 13 / 14 / 15) — the spec
+- Per-version screenshot guidance (ColorOS 13 / 14 / 15) - the spec
   asked for it but the assets need to come from real device captures.
   Track separately once we have Tier 1 devices in hand.
 - Settings entry-point to re-open the wizard from inside the app
   (currently one-shot). Add when there's a settings screen for the
   v1.x release polish pass.
 
-### D11 — Reconnect on drop (shipped)
+### D11 - Reconnect on drop (shipped)
 
 What landed:
 - `ConnectionState.Reconnecting(role, peer, psm, attempt)` carries the
@@ -265,7 +265,7 @@ What landed:
   500 ms up to the 5 s deadline. On success the outer loop reuses the
   same audio resources and re-spawns the per-session encoder / decoder
   / jitter buffer. On timeout we push `Failed` with a precise message.
-- Server `OppoLinkAccept` thread became an `accept` loop — when the
+- Server `OppoLinkAccept` thread became an `accept` loop - when the
   client tears the socket down, the server's `runDuplexCall` returns
   on `SocketLost`, the outer thread loops back to `host.acceptL2cap()`,
   and the next client reconnect binds against the same listener.
@@ -286,14 +286,14 @@ Open follow-ups:
 
 ---
 
-## Sprint 4 — Release (Week 4)
+## Sprint 4 - Release (Week 4)
 
-### D12 — Push-to-talk mode (shipped)
+### D12 - Push-to-talk mode (shipped)
 
 What landed:
 - `AudioCapture.setMuted(boolean)` flips the underlying `AudioRecord`
   between `startRecording()` and `stop()`. The mic hardware actually
-  powers down — real battery + ALSA savings — and the AEC / NS / AGC
+  powers down - real battery + ALSA savings - and the AEC / NS / AGC
   effects survive the cycle (they hang off the session id which
   doesn't change).
 - `PeerConnector.setMuted(boolean)` updates an instance-level
@@ -315,12 +315,12 @@ What landed:
 
 Open follow-ups:
 - Hardware-side: confirm the Reno 11 actually drops the mic LED while
-  muted — some OEMs only nominally stop the radio.
+  muted - some OEMs only nominally stop the radio.
 - Symmetric PTT: today only the local mic can be muted. We could
   surface a "remote muted" indicator if the peer's stream stalls for
   >N ms (the jitter buffer's `late_arrival_count` could feed this).
 
-### D13 — Encryption (shipped, wire format v2)
+### D13 - Encryption (shipped, wire format v2)
 
 What landed:
 - Rust deps: `x25519-dalek 2`, `chacha20poly1305 0.10`, `hkdf 0.12`,
@@ -345,7 +345,7 @@ What landed:
   pubkey into the handshake characteristic (was zero-padded in v1).
   `deriveServerSession(socket)` reads the first 32 bytes of the L2CAP
   payload (client pubkey), runs ECDH, returns the matching
-  `SessionKey`. Reconnect-safe — ECDH is deterministic.
+  `SessionKey`. Reconnect-safe - ECDH is deterministic.
 - `GattClient.fetchHandshake` generates its own ephemeral keypair,
   ECDHs against the server pubkey from the handshake, returns
   `GattHandshakeResult { handshake, negotiatedPhy, sessionKey, clientPubkey }`.
@@ -356,7 +356,7 @@ What landed:
   across reconnects. Tx loop uses `sessionKey.encryptFrame`; Rx uses
   `sessionKey.decryptFrame` and drops AEAD failures (jitter buffer
   PLCs the gap).
-- `ConnectionState.PsmExchanged.sasCode: UInt` — 6-digit decimal SAS;
+- `ConnectionState.PsmExchanged.sasCode: UInt` - 6-digit decimal SAS;
   UI shows "SAS 482301 (read aloud to verify)". InCallCard adds an
   "Encrypted" assist chip.
 
@@ -364,17 +364,17 @@ Open follow-ups (Sprint 4 polish):
 - SAS verification UX: emoji rendering instead of digits + explicit
   "matches / doesn't match" confirm tap. Today the user just reads
   digits; Signal-style 6-emoji is friendlier.
-- Three-strike AEAD-failure disconnect policy — today a stream of
+- Three-strike AEAD-failure disconnect policy - today a stream of
   garbage just floods the log without terminating the session.
 - Pubkey commitment in the GATT advertisement (hashed pubkey) so a
   MITM can't substitute pubkeys without the SAS hash changing
   pre-connection.
 
-### D14 — Battery profiling (hardware-pending)
+### D14 - Battery profiling (hardware-pending)
 
 Spec: Reno 11 active-call drain budget <5 %/hour, measured by polling
 `BatteryManager` every 60 s during a 30-min test call. No code change
-needed — the existing `CallForegroundService` keeps the call alive
+needed - the existing `CallForegroundService` keeps the call alive
 through screen-off, which is the only state where this is meaningful.
 
 Mitigations queued for the day we miss the budget:
@@ -383,7 +383,7 @@ Mitigations queued for the day we miss the budget:
   is still 4× our 24 kbps budget).
 - Reduce TX power (`AdvertiseSettings.ADVERTISE_TX_POWER_LOW`).
 
-### D15 — Signed APK + GitHub release + F-Droid manifest (shipped)
+### D15 - Signed APK + GitHub release + F-Droid manifest (shipped)
 
 What landed:
 - `signing.properties.example` at repo root + `.gitignore` updated to
@@ -395,16 +395,16 @@ What landed:
   `buildTypes.release` conditionally attaches the release signing
   config when secrets are present, else falls back to debug signing so
   unsigned smoke builds still produce an APK.
-- `.github/workflows/release.yml` — tag-triggered (`v*`) workflow that
+- `.github/workflows/release.yml` - tag-triggered (`v*`) workflow that
   decodes `RELEASE_KEYSTORE_B64` to disk, runs `./gradlew
   :app:assembleRelease`, uploads the signed APK as a build artifact,
   then `gh release create`s a GitHub Release. Release notes are
   pulled from the matching `## vX.Y.Z` section of `CHANGELOG.md`.
-- `metadata/link.oppolink.yml` — canonical F-Droid build metadata.
+- `metadata/link.oppolink.yml` - canonical F-Droid build metadata.
   Documents Categories, License, Build steps (Rust + cargo-ndk init
   before Gradle), CurrentVersion / CurrentVersionCode. The actual
   fdroiddata MR is a manual follow-up.
-- `RELEASE.md` — checklist + secret list + Play Store deferral note.
+- `RELEASE.md` - checklist + secret list + Play Store deferral note.
 - `CHANGELOG.md` seeded with the v0.1.0 entry summarising every
   shipped Sprint 1–4 deliverable.
 - `android/app/build.gradle.kts` versionName bumped from `0.1.0-dev`
@@ -476,7 +476,7 @@ signed APK release.
 
 ## Burns (cross-link: `CLAUDE.md` for terse summaries, here for context)
 
-The longest debugging session of the project — Sprint 1 D2 took six CI fix
+The longest debugging session of the project - Sprint 1 D2 took six CI fix
 commits before going green. Future-Claude: if you hit any of the symptoms
 below, jump straight to the cited fix.
 
@@ -486,7 +486,7 @@ below, jump straight to the cited fix.
 | `:core-protocol:compileDebugKotlin NO-SOURCE` despite `kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi"))` | AGP + KGP source-set surface is unreliable for generated Kotlin in this combo. Neither the legacy DSL nor `androidComponents.onVariants.sources.kotlin.addStaticSourceDirectory` reach `compileXxxKotlin`. | Make `uniffiBindgen` write straight into `src/main/kotlin/uniffi/<crate>/`. AGP's default Kotlin source-set finds it with no plumbing. `.gitkeep` keeps the directory alive; `.gitignore` excludes the `uniffi/` subtree. |
 | `Configuration cache problems: cannot serialize Gradle script object references` on `:core-protocol:uniffiBindgen` | `doFirst { uniffiOutDir.asFile.mkdirs() }` captured a script-level `Directory` reference. | Drop the `doFirst`. UniFFI creates the `uniffi/<crate>/` subtree itself; AGP creates `src/main/kotlin/` as part of the source set. |
 | `Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver` inside a `runCatching { … }` block, after a null-guard | Kotlin smart-cast doesn't carry across lambda boundaries. | Pin the receiver to a local `val` before the lambda. |
-| `Variable 'scope' must be initialized` on a property that derives from another via `.stateIn(scope, …)` | Class property initialization order — `peers` referenced `scope` before `scope` was declared. | Declare `scope` first; let derived flows reference it. |
+| `Variable 'scope' must be initialized` on a property that derives from another via `.stateIn(scope, …)` | Class property initialization order - `peers` referenced `scope` before `scope` was declared. | Declare `scope` first; let derived flows reference it. |
 | UniFFI `--library` mode fails on cross-arch input | Linux x86_64 bindgen binary cannot `dlopen` an Android arm64 `.so`. | Add a `hostBuild` task that builds the host-triple library; point bindgen at it. `cargoNdkBuild` separately produces the Android `.so`. Share `target/`, serialize via `mustRunAfter`. |
 | Kotlin compile races bindgen (NO-SOURCE) despite `preBuild dependsOn uniffiBindgen` | `compile*Kotlin` is not parented under `preBuild`. | `afterEvaluate { tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach { dependsOn(uniffiBindgen) } }`. |
 

@@ -58,7 +58,7 @@ jobs:
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
         run: |
           if [ -z "$RELEASE_KEYSTORE_B64" ]; then
-            echo "RELEASE_KEYSTORE_B64 secret is empty — cannot sign release."
+            echo "RELEASE_KEYSTORE_B64 secret is empty - cannot sign release."
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/oppolink"
@@ -100,7 +100,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Pull the relevant CHANGELOG.md slice for the release notes —
+          # Pull the relevant CHANGELOG.md slice for the release notes -
           # we look for "## ${tag}" and stop at the next H2.
           tag="${GITHUB_REF#refs/tags/}"
           notes=$(awk -v tag="## $tag" '
@@ -109,7 +109,7 @@ jobs:
             capture { print }
           ' ../CHANGELOG.md || true)
           if [ -z "$notes" ]; then
-            notes="OppoLink $tag — see commit history for details."
+            notes="OppoLink $tag - see commit history for details."
           fi
           gh release create "$tag" \
             "${{ steps.apk.outputs.path }}" \

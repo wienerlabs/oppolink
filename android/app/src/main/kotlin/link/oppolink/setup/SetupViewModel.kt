@@ -15,7 +15,7 @@ import link.oppolink.colorosCompat.ColorOsSettings
 /**
  * First-run wizard backing model.
  *
- * The wizard only appears on ColorOS — on stock Android `shouldShowWizard`
+ * The wizard only appears on ColorOS - on stock Android `shouldShowWizard`
  * is `false` and `MainScreen` falls straight through to the discovery
  * surface. Completion is one-way: there is no "show me again" affordance
  * in v1; the user can always tap the per-capability "Open settings"
@@ -37,7 +37,7 @@ class SetupViewModel @Inject constructor(
 
     /**
      * Fire the deep-link Intent for [capability]. Swallow
-     * `ActivityNotFoundException` — point-release variations in ColorOS
+     * `ActivityNotFoundException` - point-release variations in ColorOS
      * routinely break component names and the wizard is advisory; the
      * worst case is the user has to navigate the settings tree manually.
      */

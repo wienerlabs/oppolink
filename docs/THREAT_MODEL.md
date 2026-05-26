@@ -19,10 +19,10 @@ actually buys you.
   nickname and a (rotating, eventually) MAC address. A sniffer within range
   knows OppoLink users are nearby and roughly which ones are paired.
 - **Tamper-evident audio** without our AEAD. BLE encryption alone is **not**
-  sufficient — see "Why we don't trust BLE pairing" below.
+  sufficient - see "Why we don't trust BLE pairing" below.
 - **Resilience to a compromised handset**. If your phone is owned, OppoLink
   doesn't help you. (Nothing does.)
-- **Forward secrecy beyond a single session** — handled by ephemeral
+- **Forward secrecy beyond a single session** - handled by ephemeral
   Curve25519, but each session's keys live in memory until call end.
 
 ## In-scope threats (v2 defeats)
@@ -62,7 +62,7 @@ actually buys you.
 - **Passkey Entry** requires both peers to have a display + input. Possible
   but UX-hostile for a quick call.
 - **Out-of-Band** would need a side channel we don't have.
-- The Bluetooth security database is shared between all apps on a phone —
+- The Bluetooth security database is shared between all apps on a phone -
   any other app that pairs with the same peer can read our bond key on
   some Android versions.
 
@@ -79,5 +79,5 @@ L2CAP channel is treated as if it were the public internet.
 | AEAD                 | ChaCha20-Poly1305                  |
 | Handshake authentic. | OOB SAS verification (Sprint 4)    |
 
-All primitives are FIPS-irrelevant — this is a consumer voice app, not a
+All primitives are FIPS-irrelevant - this is a consumer voice app, not a
 DoD-procured device.

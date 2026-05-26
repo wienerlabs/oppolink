@@ -27,7 +27,7 @@ use opus::{Application, Channels, Decoder as OpusDecoder, Encoder as OpusEncoder
 /// PCM sample rate the capture/playback pipeline runs at.
 pub const SAMPLE_RATE_HZ: u32 = 16_000;
 
-/// Channel layout — mono in v1.
+/// Channel layout - mono in v1.
 pub const CHANNELS: u32 = 1;
 
 /// Frame duration in milliseconds. Opus VoIP profile uses 20 ms.
@@ -56,7 +56,7 @@ pub const MAX_OPUS_PACKET_LEN: usize = 1500;
 pub const MAX_FRAME_LEN: usize = FRAME_HEADER_LEN + MAX_OPUS_PACKET_LEN;
 
 /// Errors surfaced from the codec layer. The string variants pin a snapshot
-/// of the libopus message at the call site — libopus error codes are
+/// of the libopus message at the call site - libopus error codes are
 /// notoriously terse on their own.
 #[derive(thiserror::Error, Debug)]
 pub enum CodecError {
@@ -94,7 +94,7 @@ impl VoipEncoder {
         encoder
             .set_inband_fec(true)
             .map_err(|e| CodecError::OpusEncoder(format!("set_inband_fec: {e}")))?;
-        // DTX off in v1 — simplifies the jitter buffer; turning it on is a
+        // DTX off in v1 - simplifies the jitter buffer; turning it on is a
         // Sprint 3 follow-up if battery drain demands it.
 
         Ok(Self {
@@ -258,7 +258,7 @@ mod tests {
     fn sine_roundtrips_under_opus_lossily() {
         let mut enc = VoipEncoder::new().unwrap();
         let mut dec = VoipDecoder::new().unwrap();
-        // 1 kHz sine at 16 kHz sample rate. Skip the very first frame —
+        // 1 kHz sine at 16 kHz sample rate. Skip the very first frame -
         // Opus emits a warm-up frame that's effectively silence regardless
         // of the input.
         let mut packet = Vec::with_capacity(MAX_OPUS_PACKET_LEN);

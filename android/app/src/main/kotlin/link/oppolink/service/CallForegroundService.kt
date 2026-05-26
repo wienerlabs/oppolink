@@ -29,15 +29,15 @@ import link.oppolink.bluetooth.PeerConnector
  * Foreground service that hosts an active OppoLink call.
  *
  * **Why a service?** A coroutine running inside `ConnectionViewModel`
- * dies the moment the activity goes away. ColorOS — and stock Android
- * 14+ — kill background audio capture aggressively. The service holds
+ * dies the moment the activity goes away. ColorOS - and stock Android
+ * 14+ - kill background audio capture aggressively. The service holds
  * the system's "active call" flag (via `foregroundServiceType="microphone"`)
  * so the OS keeps the mic open and the L2CAP socket alive while the
  * screen is off.
  *
  * **Pipeline ownership.** This class does NOT own the audio thread pool;
  * `PeerConnector` (Hilt singleton) does. The service is the lifecycle
- * owner — it tells the connector to `runCall(durationMs=null)` and
+ * owner - it tells the connector to `runCall(durationMs=null)` and
  * shows the persistent notification.
  *
  * **Notification action.** The notification carries a "End call" button
@@ -46,7 +46,7 @@ import link.oppolink.bluetooth.PeerConnector
  *
  * **Peer source.** We read the current peer from
  * `connector.state.value` (must be in `PsmExchanged` when the service
- * is started). This avoids parceling `Peer` through an `Intent` —
+ * is started). This avoids parceling `Peer` through an `Intent` -
  * keeping the data class POJO.
  */
 @AndroidEntryPoint
@@ -80,7 +80,7 @@ class CallForegroundService : Service() {
             is ConnectionState.CallEnded -> state.peer
             is ConnectionState.InCall -> state.peer
             else -> {
-                Log.w(TAG, "Cannot start call — connector is in $state")
+                Log.w(TAG, "Cannot start call - connector is in $state")
                 stopSelf()
                 return
             }

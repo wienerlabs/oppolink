@@ -33,7 +33,7 @@ import link.oppolink.colorosCompat.ColorOsSettings.Capability
  * capability has its own card with an "Open settings" deep link; the
  * user toggles "All set" or "Skip for now" to dismiss the wizard.
  *
- * Skipping is treated identically to completing — the wizard never
+ * Skipping is treated identically to completing - the wizard never
  * re-appears. We trust the user to come back manually if needed; the
  * call simply fails to survive screen-off until they whitelist.
  */
@@ -119,7 +119,7 @@ private fun describe(capability: Capability): Pair<String, String> = when (capab
         "Set OppoLink to \"Don't optimize\" so ColorOS doesn't suspend the " +
         "L2CAP socket while the screen is off."
     Capability.FLOATING_WINDOW -> "Floating window" to
-        "Optional — lets the call indicator stay on top of other apps " +
+        "Optional - lets the call indicator stay on top of other apps " +
         "while a call is active."
     Capability.AUTO_LAUNCH -> "Auto-launch" to
         "Some ColorOS builds piggy-back the foreground-service kill " +

@@ -12,7 +12,7 @@ import java.io.IOException
  * `BluetoothSocket.inputStream` and `outputStream` are independent OS-level
  * handles, so [send] (write to outputStream) and [receiveExact] (read from
  * inputStream) cannot interfere with each other. **Do not** call [send] from
- * two threads, or [receiveExact] from two threads — that would corrupt the
+ * two threads, or [receiveExact] from two threads - that would corrupt the
  * stream because we don't lock at the wrapper level.
  *
  * I/O is intentionally blocking: `BluetoothSocket`'s streams are blocking by

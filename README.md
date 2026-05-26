@@ -5,7 +5,7 @@
 <h1 align="center">OppoLink</h1>
 
 <p align="center">
-  <em>BLE-native, full-duplex voice calls between two Android phones — no internet, no router, no account.</em>
+  <em>BLE-native, full-duplex voice calls between two Android phones - no internet, no router, no account.</em>
 </p>
 
 <p align="center">
@@ -21,13 +21,13 @@
 ## What is OppoLink?
 
 OppoLink is an open-source Android app that places **full-duplex voice
-calls directly over Bluetooth Low Energy** — no servers, no SIM, no
+calls directly over Bluetooth Low Energy** - no servers, no SIM, no
 Wi-Fi. Two phones in range (≈10 m Class 2, up to ≈100 m Class 1) handshake
 over GATT, open an L2CAP Connection-Oriented Channel, and stream Opus
 audio frames encrypted with Curve25519 + ChaCha20-Poly1305.
 
 The reference platform is **OPPO ColorOS 13+** on Reno / Find / A-series
-hardware — the first-run wizard deep-links into the four ColorOS settings
+hardware - the first-run wizard deep-links into the four ColorOS settings
 surfaces that gate background BLE. Stock Android 10+ works too.
 
 > _Not affiliated with Guangdong OPPO Mobile Telecommunications Corp. See [DISCLAIMER.md](DISCLAIMER.md)._
@@ -111,7 +111,7 @@ oppolink/
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the threading model
 and the UniFFI build pipeline.
 
-## Wire protocol — v2
+## Wire protocol - v2
 
 Locked in Sprint 4 D13. Full spec in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
@@ -148,10 +148,10 @@ The full sprint plan + detailed retros are in
 
 | Sprint | Scope | Status |
 | --- | --- | --- |
-| **1 — Foundations** | Skeleton, BLE discovery, GATT handshake, L2CAP echo | ✅ all 4 shipped |
-| **2 — Audio MVP** | One-way audio, full-duplex, AEC validation | ✅ D5+D6 shipped · ⏸ D7 hardware-pending |
-| **3 — ColorOS hardening** | Jitter buffer, foreground service, battery wizard, reconnect | ✅ all 4 shipped |
-| **4 — Release** | Push-to-talk, encryption (wire v2), battery profile, signed release | ✅ D12+D13+D15 shipped · ⏸ D14 hardware-pending |
+| **1 - Foundations** | Skeleton, BLE discovery, GATT handshake, L2CAP echo | ✅ all 4 shipped |
+| **2 - Audio MVP** | One-way audio, full-duplex, AEC validation | ✅ D5+D6 shipped · ⏸ D7 hardware-pending |
+| **3 - ColorOS hardening** | Jitter buffer, foreground service, battery wizard, reconnect | ✅ all 4 shipped |
+| **4 - Release** | Push-to-talk, encryption (wire v2), battery profile, signed release | ✅ D12+D13+D15 shipped · ⏸ D14 hardware-pending |
 
 ## Quality bars
 
@@ -204,7 +204,7 @@ audio hot path, no telemetry, trademark hygiene) before opening a PR.
 
 ## License
 
-[AGPL-3.0](LICENSE) — copyleft. If you ship a modified version, the source
+[AGPL-3.0](LICENSE) - copyleft. If you ship a modified version, the source
 must be available to your users.
 
 ## Trademark

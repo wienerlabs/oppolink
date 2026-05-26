@@ -101,7 +101,7 @@ class AudioPlayback : Closeable {
 
     @Suppress("unused")
     private fun forceSpeakerphone(audioManager: AudioManager) {
-        // Helper kept around for the D7 AEC validation work — the
+        // Helper kept around for the D7 AEC validation work - the
         // speaker-phone howl test needs the loudspeaker even when
         // headphones are connected.
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION

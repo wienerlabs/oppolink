@@ -37,7 +37,7 @@ data class GattHandshakeResult(
     val handshake: HandshakeMessage,
     val negotiatedPhy: Int,
     /**
-     * Sprint 4 D13 — derived AEAD key for this call. The Tx / Rx loops
+     * Sprint 4 D13 - derived AEAD key for this call. The Tx / Rx loops
      * call `sessionKey.encryptFrame` / `decryptFrame` on every 20 ms
      * frame. `null` only on the legacy code path during v1→v2 migration;
      * the new code always produces one.
@@ -52,7 +52,7 @@ data class GattHandshakeResult(
  * characteristic, snapshots the negotiated PHY, and returns both.
  *
  * The GATT session is torn down before returning, so callers that need to
- * hand off to L2CAP must wire it on top via [openL2capSocket] — this class
+ * hand off to L2CAP must wire it on top via [openL2capSocket] - this class
  * does not keep a long-lived GATT handle around. The Android L2CAP CoC API
  * works at the BD_ADDR / PSM level and does not require GATT to stay open.
  */
@@ -177,7 +177,7 @@ internal class GattClient(
 
                 override fun onPhyRead(g: BluetoothGatt, txPhy: Int, rxPhy: Int, status: Int) {
                     val phy = if (status == BluetoothGatt.GATT_SUCCESS) {
-                        // We treat the slower of tx/rx as the bottleneck — the
+                        // We treat the slower of tx/rx as the bottleneck - the
                         // 20 ms audio tick is bidirectional.
                         minOf(txPhy, rxPhy)
                     } else {
@@ -198,7 +198,7 @@ internal class GattClient(
                         )
                         return
                     }
-                    // Sprint 4 D13 — ECDH. The server published its
+                    // Sprint 4 D13 - ECDH. The server published its
                     // ephemeral pubkey in the handshake payload. We build
                     // ours, derive the session key, and let the caller
                     // write our pubkey across L2CAP in openL2capSocket.

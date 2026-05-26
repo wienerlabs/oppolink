@@ -5,7 +5,7 @@ Audio capture, playback, and hardware effects (AEC / NS / AGC). Wraps Android's
 
 ## Boundary
 - **In**: `:core-protocol` for Opus encode/decode invocations via UniFFI.
-- **Out**: a `VoiceSession` interface that the app drives — `start()`, `stop()`,
+- **Out**: a `VoiceSession` interface that the app drives - `start()`, `stop()`,
   `setMuted()`.
 
 ## Sprint 1 scope

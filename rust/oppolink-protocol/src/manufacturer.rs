@@ -33,7 +33,7 @@ pub const MANUFACTURER_DATA_MAX_LEN: usize = HEADER_LEN + MAX_NICKNAME_BYTES;
 
 /// Capability bits announced in the manufacturer-data payload.
 ///
-/// Bits are independent — peers must AND their local capabilities with the
+/// Bits are independent - peers must AND their local capabilities with the
 /// remote bitmap to decide which features are actually usable on this link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
 pub struct Capabilities {
@@ -79,7 +79,7 @@ impl Capabilities {
     }
 }
 
-/// Decoded manufacturer-data payload — what the scanner surfaces and what the
+/// Decoded manufacturer-data payload - what the scanner surfaces and what the
 /// advertiser consumes.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ManufacturerData {

@@ -18,11 +18,11 @@ import link.oppolink.setup.SetupViewModel
 
 /**
  * Single-activity navigation:
- *   1. [PermissionGate] — runtime BLE / RECORD_AUDIO grants
- *   2. [ColorOsSetupScreen] — Sprint 3 D10 first-run wizard; auto-skipped
+ *   1. [PermissionGate] - runtime BLE / RECORD_AUDIO grants
+ *   2. [ColorOsSetupScreen] - Sprint 3 D10 first-run wizard; auto-skipped
  *      on stock Android or once the user has dismissed it
- *   3. [DiscoveryScreen] / [ConnectionScreen] — the actual app
- *   4. [SettingsScreen] — reachable from the Discovery header; lets the
+ *   3. [DiscoveryScreen] / [ConnectionScreen] - the actual app
+ *   4. [SettingsScreen] - reachable from the Discovery header; lets the
  *      user re-open the wizard, deep-link into ColorOS settings, and
  *      read app/build info
  *
@@ -43,7 +43,7 @@ fun MainScreen() {
                 BackHandler { settingsOpen = false }
                 SettingsScreen(onBack = {
                     settingsOpen = false
-                    // Sprint 4 polish — if the user reset the wizard
+                    // Sprint 4 polish - if the user reset the wizard
                     // from inside Settings, surface that immediately
                     // when we return to the Discovery / setup gate.
                     setupViewModel.refresh()

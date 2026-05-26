@@ -46,7 +46,7 @@ fun ConnectionScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    // Sprint 4 D12 — push-to-talk mode toggle. UI-local state; the
+    // Sprint 4 D12 - push-to-talk mode toggle. UI-local state; the
     // ViewModel only sees `setMuted(true|false)` calls. When PTT mode
     // is enabled we auto-mute and surface a hold-to-talk button.
     var pttMode by remember { mutableStateOf(false) }
@@ -371,7 +371,7 @@ private fun phyLabel(phy: Int): String = when (phy) {
 }
 
 /**
- * Signal-style SAS palette — 64 visually distinct glyphs the user can
+ * Signal-style SAS palette - 64 visually distinct glyphs the user can
  * tell apart at a glance. Index by byte AND 0x3F.
  */
 private val SAS_EMOJI_PALETTE = listOf(
@@ -410,7 +410,7 @@ private fun SasEmojiCard(
             Spacer(Modifier.height(4.dp))
             Text(
                 "Both phones should show the same six emoji. If they don't " +
-                    "match, an attacker is forwarding your handshake — hang up.",
+                    "match, an attacker is forwarding your handshake - hang up.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -449,7 +449,7 @@ private fun describe(state: ConnectionState): Triple<String, String, Boolean> = 
     )
     is ConnectionState.PsmExchanged -> Triple(
         "PSM received: ${state.psm}",
-        "${phyLabel(state.negotiatedPhy)} · ChaCha20-Poly1305 ready — verify the SAS below.",
+        "${phyLabel(state.negotiatedPhy)} · ChaCha20-Poly1305 ready - verify the SAS below.",
         false,
     )
     is ConnectionState.InCall -> Triple(
@@ -459,7 +459,7 @@ private fun describe(state: ConnectionState): Triple<String, String, Boolean> = 
     )
     is ConnectionState.Reconnecting -> Triple(
         "Reconnecting (attempt ${state.attempt})",
-        "L2CAP socket dropped — reopening on PSM ${state.psm} for up to 5 s.",
+        "L2CAP socket dropped - reopening on PSM ${state.psm} for up to 5 s.",
         false,
     )
     is ConnectionState.CallEnded -> Triple(

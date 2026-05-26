@@ -4,7 +4,7 @@
 //! re-shapes the error type into something UniFFI can serialize.
 //!
 //! The 4-byte framing header is the same layout Sprint 1 D4 echo packets
-//! use for their leading bytes, but the field semantics differ — see
+//! use for their leading bytes, but the field semantics differ - see
 //! [`docs/PROTOCOL.md`](../../../docs/PROTOCOL.md) "Audio frame".
 
 use std::sync::{Arc, Mutex};
@@ -16,7 +16,7 @@ use oppolink_codec as codec;
 /// surface PCM-length and short-frame mistakes the Kotlin side can format
 /// without parsing free-form strings.
 ///
-/// NB: field is named `detail` rather than `message` — UniFFI's generated
+/// NB: field is named `detail` rather than `message` - UniFFI's generated
 /// Kotlin maps each variant to a class extending `Throwable` and a field
 /// called `message` would shadow `Throwable.message` without the
 /// `override` modifier the codegen does not emit.

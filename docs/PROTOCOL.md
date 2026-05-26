@@ -1,4 +1,4 @@
-# Wire Protocol — v2
+# Wire Protocol - v2
 
 Status: **locked at v2** after Sprint 4 D13 (Curve25519 + ChaCha20-Poly1305).
 v1 (Sprint 1–3) was cleartext audio frames + zero-padded pubkey; v2 mandates
@@ -11,7 +11,7 @@ bump.
   `4F50504C-0001-4F50-504C-000000000001`. ASCII "OPPL" appears on word
   boundaries so the UUID is easy to spot in scan dumps.
 - **Handshake characteristic** (Sprint 1 D3):
-  `4F50504C-0001-4F50-504C-000000000002` — the same base UUID with the suffix
+  `4F50504C-0001-4F50-504C-000000000002` - the same base UUID with the suffix
   bumped to `…0002`.
 - **Manufacturer ID**: `0xFFFF` (Bluetooth SIG "test" range). Replaced with a
   real SIG-assigned ID before the public v1 release.
@@ -19,7 +19,7 @@ bump.
   field, disambiguating OppoLink advertisements from any other app that also
   happens to use `0xFFFF`.
 
-## Discovery — BLE advertising (Sprint 1 D2, locked)
+## Discovery - BLE advertising (Sprint 1 D2, locked)
 
 Two packets per advertise cycle:
 
@@ -55,10 +55,10 @@ Capability bitmap bits:
 
 Encode/decode is implemented in `rust/oppolink-protocol/src/manufacturer.rs`
 and exposed to Kotlin via UniFFI as `encodeManufacturerData` /
-`parseManufacturerData`. Kotlin must not parse the layout by hand — Rust is
+`parseManufacturerData`. Kotlin must not parse the layout by hand - Rust is
 the source of truth.
 
-## Handshake (Sprint 1 D3, locked — over GATT characteristic `…0002`)
+## Handshake (Sprint 1 D3, locked - over GATT characteristic `…0002`)
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -93,7 +93,7 @@ the source of truth.
 ## L2CAP echo packet (Sprint 1 D4, locked)
 
 The Sprint 1 close-out test that validates the round-trip latency budget
-before the audio path lands. Carries no semantic payload — every packet is
+before the audio path lands. Carries no semantic payload - every packet is
 1024 bytes of zero-filled body behind a 4-byte sequence prefix. The server
 side simply mirrors each frame back to the sender; the client measures
 `System.nanoTime()` deltas and computes nearest-rank p50 / p95 in
@@ -112,17 +112,17 @@ side simply mirrors each frame back to the sender; the client measures
 - Default sample count is 10. Result fields: `sample_count`, `p50_ms`,
   `p95_ms`, `min_ms`, `max_ms`. Empty input returns a zeroed [`EchoStats`]
   so the UI never has to branch on `Option`.
-- Both sides MUST run the I/O on dedicated `Thread`s — coroutine dispatcher
+- Both sides MUST run the I/O on dedicated `Thread`s - coroutine dispatcher
   jitter is not tolerable on the 20 ms audio tick we're rehearsing for.
 
-## Audio frame (Sprint 4 D13, locked — AEAD mandatory)
+## Audio frame (Sprint 4 D13, locked - AEAD mandatory)
 
 `PROTOCOL_VERSION` `0x02` mandates ChaCha20-Poly1305 on every audio
 frame. The cleartext layout below is retained for archival purposes
-only — peers that negotiate `version = 0x02` MUST drop any frame that
+only - peers that negotiate `version = 0x02` MUST drop any frame that
 fails AEAD verification.
 
-### v1 cleartext (archived — Sprint 2 D5 → Sprint 4 D13)
+### v1 cleartext (archived - Sprint 2 D5 → Sprint 4 D13)
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -143,28 +143,28 @@ fails AEAD verification.
   outgoing frames and tracks the remote peer's pair on the incoming
   side independently.
 - The receive side feeds an adaptive jitter buffer (Sprint 3 D8). The
-  wire format is **unchanged** — the buffer is a pure receiver-side
+  wire format is **unchanged** - the buffer is a pure receiver-side
   concern that handles reordering, dedup, and PLC trigger. Adaptive
   depth lives in 40–100 ms range (2–5 frames).
 - **Reconnect** (Sprint 3 D11): when the L2CAP socket breaks the client
-  reopens against the **same cached PSM** — the handshake is not
+  reopens against the **same cached PSM** - the handshake is not
   re-run. The wire stream resumes with the next `seq` so the peer's
   jitter buffer treats the gap as PLC frames. If the reconnect window
   (5 s) elapses, the session ends and a fresh handshake is needed.
 - **Push-to-talk** (Sprint 4 D12): when the local user mutes (PTT off
   by default, or PTT-mode released) the Tx loop stops `AudioRecord`
-  and skips its send leg. **No frames are sent** during mute periods —
+  and skips its send leg. **No frames are sent** during mute periods -
   the wire format is unchanged but the peer sees `seq` gaps that the
   jitter buffer treats as PLC. Unmuting resumes inside one tick and
   the peer's jitter PLC tail naturally fills the seam.
-- `ts` wraps every ~21 minutes — receivers MUST tolerate wrap-around.
+- `ts` wraps every ~21 minutes - receivers MUST tolerate wrap-around.
 - `seq` increments per peer-direction, starting at 0 on session start. The
   receiver uses `seq` for jitter buffer ordering and PLC trigger detection.
 - Opus is configured for VoIP: 16 kHz mono, 20 ms frame, 24 kbps,
   complexity 5, FEC on, DTX off. Source of truth is
   `rust/oppolink-codec/src/lib.rs`.
 
-### v2 AEAD frame (current — Sprint 4 D13 locked)
+### v2 AEAD frame (current - Sprint 4 D13 locked)
 
 ```
 ┌─────────────────────────────────────────────────────┐

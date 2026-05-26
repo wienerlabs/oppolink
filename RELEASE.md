@@ -80,13 +80,13 @@ F-Droid should build OppoLink. To get it into the official catalogue:
 3. Run `fdroid lint link.oppolink` then `fdroid build link.oppolink:0.1.0`
    locally to verify.
 4. Open a merge request against `fdroiddata`.
-5. F-Droid's CI rebuilds the APK from source on its own infrastructure —
+5. F-Droid's CI rebuilds the APK from source on its own infrastructure -
    our GitHub-signed APK is **not** what users get from F-Droid; F-Droid
    re-signs with its own keys.
 
 ## Play Store
 
-Deferred pending trademark counsel — see DISCLAIMER.md. The package
+Deferred pending trademark counsel - see DISCLAIMER.md. The package
 namespace `link.oppolink` is trademark-safe but the human-readable
 "OppoLink" name needs a once-over before listing.
 

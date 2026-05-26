@@ -21,7 +21,7 @@ import android.util.Log
  *      back only the platform intent. The setup wizard skips itself
  *      entirely on stock Android.
  *
- * All caller-facing methods are total — they never throw. The wizard
+ * All caller-facing methods are total - they never throw. The wizard
  * surfaces are advisory and the user can always skip them.
  */
 object ColorOsSettings {
@@ -36,7 +36,7 @@ object ColorOsSettings {
 
     /**
      * Heuristic ColorOS detection. ColorOS reports its own version through
-     * a hidden system property — we read it via reflection so we don't
+     * a hidden system property - we read it via reflection so we don't
      * have to depend on the `@hide` `SystemProperties` API.
      *
      * On non-OPPO devices the property is absent, the reflection call
@@ -98,7 +98,7 @@ object ColorOsSettings {
 
         Capability.AUTO_LAUNCH -> firstResolvable(
             context,
-            // ColorOS legacy "auto-launch" surface — same package as
+            // ColorOS legacy "auto-launch" surface - same package as
             // Startup Manager but a different activity.
             componentIntent("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
             componentIntent("com.coloros.safecenter", "com.coloros.privacypermissionsentry.PermissionTopActivity"),

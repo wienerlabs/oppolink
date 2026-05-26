@@ -28,7 +28,7 @@ pub enum JitterPopResult {
     Packet { opus_packet: Vec<u8> },
     /// Synthesize a packet via `opus_decode(NULL)`.
     Plc,
-    /// No data yet — caller should keep idling. Used during prewarm.
+    /// No data yet - caller should keep idling. Used during prewarm.
     Empty,
 }
 

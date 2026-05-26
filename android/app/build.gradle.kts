@@ -24,7 +24,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
-    // Sprint 4 D15 — release signing. Reads `signing.properties` at the
+    // Sprint 4 D15 - release signing. Reads `signing.properties` at the
     // repo root for local dev, or the matching env vars in CI. Either
     // path is optional; when neither is present the release build falls
     // back to the debug signing config so unit / smoke builds still
@@ -61,7 +61,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Sprint 4 D15 — only attach the release signing config when
+            // Sprint 4 D15 - only attach the release signing config when
             // the credentials are actually present. Otherwise fall back
             // to debug signing so CI smoke builds and local `gradle help`
             // don't choke on missing files.
@@ -72,7 +72,7 @@ android {
 
     buildFeatures {
         compose = true
-        // Sprint 4 polish — Settings screen reads BuildConfig.VERSION_NAME
+        // Sprint 4 polish - Settings screen reads BuildConfig.VERSION_NAME
         // / VERSION_CODE so the displayed version stays in lockstep with
         // the Gradle config without a manual constant.
         buildConfig = true

@@ -25,7 +25,7 @@ android {
     }
     kotlinOptions { jvmTarget = "21" }
 
-    // jniLibs are the cargoNdkBuild output — added via the legacy source-set
+    // jniLibs are the cargoNdkBuild output - added via the legacy source-set
     // API because AGP still honors `jniLibs.srcDir` there.
     sourceSets {
         named("main") {
@@ -50,14 +50,14 @@ dependencies {
 // ─── Rust → JNI libs + UniFFI Kotlin bindings ────────────────────────────────
 //
 // Three tasks compose the Rust → Android pipeline:
-//   1. hostBuild       — `cargo build --release -p oppolink-protocol` for the
+//   1. hostBuild       - `cargo build --release -p oppolink-protocol` for the
 //                        host triple. Produces a .dylib/.so that UniFFI's
 //                        bindgen can introspect with the same architecture
 //                        it's running on.
-//   2. uniffiBindgen   — runs `cargo run --bin uniffi-bindgen` against the
+//   2. uniffiBindgen   - runs `cargo run --bin uniffi-bindgen` against the
 //                        host library and writes Kotlin into
 //                        build/generated/uniffi/.
-//   3. cargoNdkBuild   — `cargo ndk … build --release` for arm64-v8a +
+//   3. cargoNdkBuild   - `cargo ndk … build --release` for arm64-v8a +
 //                        armeabi-v7a. Writes the Android .so files into
 //                        src/main/jniLibs/<abi>/.
 //
@@ -80,7 +80,7 @@ val supportedAbis = listOf(
 val jniLibsRoot = layout.projectDirectory.dir("src/main/jniLibs")
 
 // Bindgen writes Kotlin straight into the standard Kotlin source root so AGP's
-// default source-set picks it up — no addGeneratedSourceDirectory hoops, no
+// default source-set picks it up - no addGeneratedSourceDirectory hoops, no
 // NO-SOURCE Kotlin task. `.gitignore` already excludes the resulting
 // `src/main/kotlin/uniffi/` tree so the working copy stays clean.
 val uniffiOutDir = layout.projectDirectory.dir("src/main/kotlin")

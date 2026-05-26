@@ -52,7 +52,7 @@ import uniffi.oppolink_protocol.pcmSamplesPerFrame
  * an `Rx` thread (L2CAP read → libopus → `AudioTrack`) in parallel. Both
  * threads run at `Process.THREAD_PRIORITY_URGENT_AUDIO`. The L2CAP socket
  * is shared but `BluetoothSocket.inputStream` and `outputStream` are
- * independent at the OS level — see [L2capChannel] for the contract.
+ * independent at the OS level - see [L2capChannel] for the contract.
  */
 interface PeerConnector {
     val state: StateFlow<ConnectionState>
@@ -70,7 +70,7 @@ interface PeerConnector {
      * Drive a full-duplex call.
      *
      * `durationMs = null` runs indefinitely until [cancel] or the peer
-     * closes the socket — that's what the Sprint 3 D9 foreground service
+     * closes the socket - that's what the Sprint 3 D9 foreground service
      * passes. A non-null value caps the client-side Tx loop and is useful
      * for the in-app "10 second test call" affordance still on the
      * "Start full-duplex call" button.
@@ -78,7 +78,7 @@ interface PeerConnector {
     suspend fun runCall(peer: Peer, durationMs: Long? = null)
 
     /**
-     * Sprint 4 D12 — toggle the local mic. `true` truly stops the
+     * Sprint 4 D12 - toggle the local mic. `true` truly stops the
      * underlying `AudioRecord` (the radio + CPU savings are real on a
      * push-to-talk call), and the Tx thread skips its send leg until
      * the flag flips back to `false`. The L2CAP socket stays open the
@@ -112,7 +112,7 @@ internal class RealPeerConnector(
     private var statsTickerJob: Job? = null
 
     /**
-     * Sprint 4 D12 — push-to-talk mute flag. Owned at instance scope so
+     * Sprint 4 D12 - push-to-talk mute flag. Owned at instance scope so
      * the UI can toggle it at any moment without having to thread the
      * value through `runCall`. The Tx thread reads it once per tick.
      */
@@ -121,7 +121,7 @@ internal class RealPeerConnector(
     private val currentCapture = AtomicReference<AudioCapture?>(null)
 
     /**
-     * Sprint 4 D13 — derived after the GATT handshake, used by every
+     * Sprint 4 D13 - derived after the GATT handshake, used by every
      * [runCall] on this peer (including reconnects on the same PSM).
      * Cleared by [cancel] / [shutdown].
      */
@@ -195,7 +195,7 @@ internal class RealPeerConnector(
             else -> error("Call can only start after handshake; current=${s::class.simpleName}")
         }
         val session = activeSession.get()
-            ?: error("No active session — call connect() first")
+            ?: error("No active session - call connect() first")
         val socketRef = AtomicReference<BluetoothSocket?>(null)
 
         suspendCancellableCoroutine<Unit> { cont ->
@@ -261,14 +261,14 @@ internal class RealPeerConnector(
         passiveAcceptThread?.interrupt()
         passiveAcceptThread = Thread({
             // Accept loop (Sprint 3 D11). After a SocketLost we drop back
-            // here and wait for the client to reconnect — `runDuplexCall`
+            // here and wait for the client to reconnect - `runDuplexCall`
             // on the server side does not reconnect itself; the listening
             // socket on `GattServerHost` is what the client re-opens
             // against.
             while (!Thread.currentThread().isInterrupted) {
                 val socket = host.acceptL2cap() ?: break
                 val remotePeer = synthesizeRemotePeer(socket)
-                // Sprint 4 D13 — read the client pubkey + derive the AEAD
+                // Sprint 4 D13 - read the client pubkey + derive the AEAD
                 // key. Reconnect re-runs this on the same keypair (ECDH
                 // is deterministic for the same peer pubkey) so the
                 // resulting SessionKey matches what the client computed.
@@ -326,10 +326,10 @@ internal class RealPeerConnector(
      * loop in [runDuplexCall] can decide whether to retry.
      */
     private enum class SessionEndReason {
-        /** Tx finished cleanly — duration elapsed or [running] flipped. */
+        /** Tx finished cleanly - duration elapsed or [running] flipped. */
         Normal,
 
-        /** Tx or Rx hit an `IOException` — the L2CAP socket is gone. */
+        /** Tx or Rx hit an `IOException` - the L2CAP socket is gone. */
         SocketLost,
 
         /**
@@ -404,12 +404,12 @@ internal class RealPeerConnector(
                     SessionEndReason.Normal -> break@outer
 
                     SessionEndReason.AeadFlood -> {
-                        // Three consecutive AEAD failures — give up the
+                        // Three consecutive AEAD failures - give up the
                         // whole call. Reconnecting would use the same
                         // SessionKey against the same attacker.
                         _state.value = ConnectionState.Failed(
                             peer = peer,
-                            reason = "Suspicious traffic — call terminated after " +
+                            reason = "Suspicious traffic - call terminated after " +
                                 "$AEAD_FAILURE_THRESHOLD consecutive AEAD failures.",
                             role = role,
                         )
@@ -605,7 +605,7 @@ internal class RealPeerConnector(
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val pcm = ShortArray(capture.frameSamples)
         // Seq + ts continue from the per-call counters so a reconnect
-        // doesn't reset the wire stream — the peer's jitter buffer
+        // doesn't reset the wire stream - the peer's jitter buffer
         // still uses signed-delta arithmetic to order frames.
         var seq: Int = framesSent.get() and 0xFFFF
         var tsTicks: Int = framesSent.get() and 0xFFFF
@@ -648,7 +648,7 @@ internal class RealPeerConnector(
                 Log.w(TAG, "encode failed: ${t.message}; stopping Tx")
                 break
             }
-            // Sprint 4 D13 — ChaCha20-Poly1305 wrap. Frame on the wire is
+            // Sprint 4 D13 - ChaCha20-Poly1305 wrap. Frame on the wire is
             // now [seq | ts | nonce(12) | ciphertext | tag(16)].
             val framed = sessionKey.encryptFrame(
                 seq = (seq and 0xFFFF).toUShort(),
@@ -663,7 +663,7 @@ internal class RealPeerConnector(
                 channel.send(lenPrefix)
                 channel.send(framed)
             } catch (e: IOException) {
-                Log.i(TAG, "Tx closing — L2CAP socket lost: ${e.message}")
+                Log.i(TAG, "Tx closing - L2CAP socket lost: ${e.message}")
                 sessionReason.compareAndSet(SessionEndReason.Normal, SessionEndReason.SocketLost)
                 break
             }
@@ -705,7 +705,7 @@ internal class RealPeerConnector(
                 }
                 val frameBuf = ByteArray(frameLen)
                 channel.receiveExact(frameBuf)
-                // Sprint 4 D13 — AEAD-decrypt the frame. Tag mismatch or
+                // Sprint 4 D13 - AEAD-decrypt the frame. Tag mismatch or
                 // truncation means a tampered or wrong-key packet; drop
                 // it and the jitter buffer PLCs the gap. After
                 // [AEAD_FAILURE_THRESHOLD] in a row we treat it as
@@ -732,7 +732,7 @@ internal class RealPeerConnector(
                 consecutiveDecryptFailures = 0
                 jitterBuffer.push(decrypted.header.seq, decrypted.opusPacket)
             } catch (e: IOException) {
-                Log.i(TAG, "Rx closing — L2CAP socket lost: ${e.message}")
+                Log.i(TAG, "Rx closing - L2CAP socket lost: ${e.message}")
                 sessionReason.compareAndSet(SessionEndReason.Normal, SessionEndReason.SocketLost)
                 break
             }
@@ -777,7 +777,7 @@ internal class RealPeerConnector(
                 }
                 JitterPopResult.Plc -> runCatching { decoder.decodePlc() }.getOrNull()
                 JitterPopResult.Empty -> {
-                    // Prewarm window — no data yet; idle briefly and try
+                    // Prewarm window - no data yet; idle briefly and try
                     // again. Production traffic should leave Empty within
                     // a few ticks of the first arrival.
                     Thread.sleep(1)
@@ -813,20 +813,20 @@ internal class RealPeerConnector(
         /** Time we wait for Rx to drain before forcibly tearing down. */
         const val SHUTDOWN_GRACE_MS = 1_500L
 
-        /** Sprint 3 D11 — reconnect window before giving up on the call. */
+        /** Sprint 3 D11 - reconnect window before giving up on the call. */
         const val RECONNECT_DEADLINE_MS = 5_000L
 
         /** Polling interval inside [attemptReconnect]. */
         const val RECONNECT_BACKOFF_MS = 500L
 
-        /** Sprint 4 D12 — sleep duration per Tx tick while the mic is muted. */
+        /** Sprint 4 D12 - sleep duration per Tx tick while the mic is muted. */
         const val MUTED_TICK_MS = 20L
 
-        /** Sprint 4 polish — jitter-stats sampling cadence. */
+        /** Sprint 4 polish - jitter-stats sampling cadence. */
         const val STATS_INTERVAL_MS = 1_000L
 
         /**
-         * Sprint 4 polish — consecutive AEAD failures before we treat the
+         * Sprint 4 polish - consecutive AEAD failures before we treat the
          * stream as hostile and end the call. Three is the standard
          * Signal-style threshold; loud enough to catch attackers but
          * tolerant of a single bit-flip on a noisy radio.

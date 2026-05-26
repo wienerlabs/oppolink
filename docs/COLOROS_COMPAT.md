@@ -20,7 +20,7 @@ on real hardware.
 1. **Startup Manager** (`com.coloros.safecenter`) gates background launches.
    OppoLink's foreground service does **not** count as a "background launch"
    while running, but cold-starting the service from a notification action
-   does — the user must whitelist the app once.
+   does - the user must whitelist the app once.
 2. **Battery Optimization** must be set to "Don't optimize" or aggressive
    sleep policies will kill the L2CAP socket within ~3 minutes of the screen
    turning off.

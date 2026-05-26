@@ -22,14 +22,14 @@
 //!     (peer's jitter is high) and shrinks back when frames arrive
 //!     cleanly. Bounded by [`min_depth`, `max_depth`].
 //!
-//! Wire format is unchanged by the jitter buffer — this is a pure
+//! Wire format is unchanged by the jitter buffer - this is a pure
 //! receiver-side concern.
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use std::collections::BTreeMap;
 
-/// Default adaptive bounds — 2–5 frames at 20 ms = 40–100 ms of buffering.
+/// Default adaptive bounds - 2–5 frames at 20 ms = 40–100 ms of buffering.
 /// Matches the spec target in `README.md` (Audio Pipeline section).
 pub const DEFAULT_MIN_DEPTH: usize = 2;
 pub const DEFAULT_MAX_DEPTH: usize = 5;
@@ -58,7 +58,7 @@ pub enum PopResult {
     /// Synthesize a packet via `opus_decode(NULL)`; the expected frame is
     /// missing and the buffer has advanced past it.
     Plc,
-    /// No data yet — the caller should keep idling. Used during the
+    /// No data yet - the caller should keep idling. Used during the
     /// initial prewarm before the buffer has filled to `target_depth`.
     Empty,
 }
@@ -137,7 +137,7 @@ impl JitterBuffer {
 
     /// Insert a freshly arrived frame.
     ///
-    /// `next_expected` is intentionally **not** set on push — that is the
+    /// `next_expected` is intentionally **not** set on push - that is the
     /// playback loop's job in [`pop_next`]. Setting it on first push would
     /// classify an out-of-order arrival of a smaller seq as `LateArrival`,
     /// which it is not until playback has actually moved past it.
@@ -147,7 +147,7 @@ impl JitterBuffer {
         if let Some(next) = self.next_expected {
             let delta = signed_seq_delta(seq, next);
             if delta < 0 {
-                // Strictly older than next_expected — the playback loop
+                // Strictly older than next_expected - the playback loop
                 // has already PLC'd or moved past it.
                 self.late_arrival_count += 1;
                 return PushResult::LateArrival;
@@ -192,7 +192,7 @@ impl JitterBuffer {
 
         // Expected frame not here. If there's anything later in the
         // buffer, we PLC and advance. If the buffer is empty, the peer
-        // has gone silent and we also PLC — capping consecutive PLCs is
+        // has gone silent and we also PLC - capping consecutive PLCs is
         // the caller's policy.
         self.advance_next_expected();
         self.plc_count += 1;
@@ -289,7 +289,7 @@ mod tests {
         let mut jb = JitterBuffer::new(2, 5);
         jb.push(0, packet(1));
         jb.push(1, packet(2));
-        // Prewarm done — pop the first frame so next_expected advances to 1.
+        // Prewarm done - pop the first frame so next_expected advances to 1.
         assert_eq!(jb.pop_next(), PopResult::Packet(packet(1)));
         // seq=0 now strictly behind next_expected (1).
         assert_eq!(jb.push(0, packet(99)), PushResult::LateArrival);

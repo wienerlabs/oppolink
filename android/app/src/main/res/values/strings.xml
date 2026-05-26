@@ -5,6 +5,6 @@
     <!-- Foreground service / notification (Sprint 3 D9) -->
     <string name="call_channel_name">Calls</string>
     <string name="call_channel_desc">Active OppoLink BLE voice calls</string>
-    <string name="call_notification_title">OppoLink — call active</string>
+    <string name="call_notification_title">OppoLink - call active</string>
     <string name="call_notification_stop">End call</string>
 </resources>

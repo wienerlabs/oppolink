@@ -8,7 +8,7 @@ import uniffi.oppolink_protocol.serviceUuid
 /**
  * Wire-format constants exposed to the Kotlin side. The values are **sourced
  * from Rust** through UniFFI so that protocol changes can never drift between
- * the two languages — Rust is the single source of truth.
+ * the two languages - Rust is the single source of truth.
  */
 object OppoLinkUuid {
     /** 128-bit BLE service UUID advertised by every OppoLink peer. */

@@ -1,4 +1,4 @@
-//! Sprint 4 D13 — per-session AEAD layer.
+//! Sprint 4 D13 - per-session AEAD layer.
 //!
 //! Once [`crate::EphemeralKeyPair::derive_session`] runs, both peers
 //! hold a [`SessionKey`] backed by the same ChaCha20-Poly1305 key and
@@ -39,7 +39,7 @@ pub const MIN_ENCRYPTED_FRAME_LEN: usize = FRAME_HEADER_LEN + NONCE_PREFIX_LEN +
 pub enum SessionDecryptError {
     #[error("frame too short: need at least {needed} bytes, got {got}")]
     FrameTooShort { needed: u32, got: u32 },
-    #[error("AEAD tag mismatch — wrong key or tampered ciphertext")]
+    #[error("AEAD tag mismatch - wrong key or tampered ciphertext")]
     TagMismatch,
 }
 
@@ -57,7 +57,7 @@ pub struct SessionKey {
 
 impl std::fmt::Debug for SessionKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Don't print the underlying key material — even at Debug time.
+        // Don't print the underlying key material - even at Debug time.
         f.debug_struct("SessionKey")
             .field("sas", &self.sas_value)
             .finish_non_exhaustive()
@@ -119,7 +119,7 @@ impl SessionKey {
             msg: &opus_packet,
             aad: &header,
         };
-        // ChaCha20Poly1305.encrypt cannot fail under normal usage — only
+        // ChaCha20Poly1305.encrypt cannot fail under normal usage - only
         // on a 64-GiB-class plaintext. We `expect` because 20 ms of audio
         // is at most a few kilobytes.
         let ciphertext = inner

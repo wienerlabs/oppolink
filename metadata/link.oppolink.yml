@@ -11,12 +11,12 @@ AutoName: OppoLink
 Summary: BLE-only full-duplex voice calls between two Android phones
 Description: |-
   OppoLink lets two Android phones place full-duplex voice calls
-  directly over Bluetooth Low Energy — no internet, no router, no
+  directly over Bluetooth Low Energy - no internet, no router, no
   cellular, no account. The audio path runs at 16 kHz Opus VoIP, 20 ms
   frames, over an L2CAP CoC socket; every frame is encrypted with
   Curve25519 + ChaCha20-Poly1305 derived at handshake time.
 
-  Optimised for OPPO ColorOS (Reno / Find / A-series) — the first-run
+  Optimised for OPPO ColorOS (Reno / Find / A-series) - the first-run
   wizard deep-links into Startup Manager, Battery Optimization,
   Floating Window, and Auto-Launch settings so background calls
   survive screen-off. Generic Android 10+ is supported but not the

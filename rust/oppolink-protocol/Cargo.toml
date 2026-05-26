@@ -27,7 +27,7 @@ thiserror = { workspace = true }
 oppolink-codec = { path = "../oppolink-codec" }
 oppolink-jitter = { path = "../oppolink-jitter" }
 
-# Sprint 4 D13 — crypto. All RustCrypto; pure Rust, Android-NDK friendly.
+# Sprint 4 D13 - crypto. All RustCrypto; pure Rust, Android-NDK friendly.
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 chacha20poly1305 = "0.10"
 hkdf = "0.12"

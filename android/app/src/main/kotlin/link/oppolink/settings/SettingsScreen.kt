@@ -30,7 +30,7 @@ import link.oppolink.colorosCompat.ColorOsSettings.Capability
 
 /**
  * App settings + diagnostic surface. Reachable from the DiscoveryScreen
- * header. Reads everything from local state — no network, no telemetry.
+ * header. Reads everything from local state - no network, no telemetry.
  */
 @Composable
 fun SettingsScreen(
@@ -134,7 +134,7 @@ private fun PrivacySection() {
                 "OppoLink collects no telemetry, opens no network sockets, and ships no " +
                     "accounts. All audio stays between you and your peer over a single " +
                     "L2CAP channel, encrypted end-to-end. The L2CAP link is treated as " +
-                    "if it were the public internet — see THREAT_MODEL.md in the repo.",
+                    "if it were the public internet - see THREAT_MODEL.md in the repo.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

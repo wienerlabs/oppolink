@@ -24,7 +24,7 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 overflow-checks = true
-# NOTE: do not `strip = "symbols"` here — UniFFI bindgen's `--library` mode
+# NOTE: do not `strip = "symbols"` here - UniFFI bindgen's `--library` mode
 # reads metadata sections that the Linux linker drops together with the
 # regular symbol table. cargo-ndk strips the Android-shipped .so itself.
 

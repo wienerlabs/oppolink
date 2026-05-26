@@ -14,6 +14,6 @@ crate-type = ["rlib"]
 [dependencies]
 thiserror = { workspace = true }
 # libopus binding via the `opus` crate. Uses cc-rs to compile a vendored
-# libopus 1.5.x snapshot from C — no system libopus, no CMake. Works on
+# libopus 1.5.x snapshot from C - no system libopus, no CMake. Works on
 # macOS dev and Android NDK runners alike.
 opus = "0.3.0"

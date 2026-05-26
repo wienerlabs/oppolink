@@ -18,7 +18,7 @@ import uniffi.oppolink_protocol.pcmSamplesPerFrame
 /**
  * Microphone capture pipeline (Sprint 2 D5).
  *
- * Configures `AudioRecord` for VoIP — 16 kHz mono PCM, 20 ms frames — and
+ * Configures `AudioRecord` for VoIP - 16 kHz mono PCM, 20 ms frames - and
  * attaches hardware AEC / NS / AGC effects when the OEM reports them
  * available. The audio session id wired into the effects is the one
  * `AudioRecord` allocates internally; that's the only path that lets the
@@ -73,7 +73,7 @@ class AudioCapture : Closeable {
             "AudioRecord failed to initialise (state=${rec.state})"
         }
 
-        // Hardware effects are best-effort — `isAvailable()` lies on some
+        // Hardware effects are best-effort - `isAvailable()` lies on some
         // OEMs but `create()` will return null if it lied.
         val sessionId = rec.audioSessionId
         if (AcousticEchoCanceler.isAvailable()) {
@@ -131,11 +131,11 @@ class AudioCapture : Closeable {
     /**
      * Toggle mute. `true` stops the underlying `AudioRecord` (the mic
      * truly goes off, saving battery on a push-to-talk call). `false`
-     * resumes recording. Idempotent — calling twice with the same value
+     * resumes recording. Idempotent - calling twice with the same value
      * is a no-op, so the Tx loop can call this on every press / release
      * without ceremony.
      *
-     * Hardware effects (AEC / NS / AGC) survive the stop/start cycle —
+     * Hardware effects (AEC / NS / AGC) survive the stop/start cycle -
      * they're attached to the `AudioRecord` session id which doesn't
      * change.
      */

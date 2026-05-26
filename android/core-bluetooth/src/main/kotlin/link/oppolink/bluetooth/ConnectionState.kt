@@ -9,7 +9,7 @@ import uniffi.oppolink_protocol.Role
  * every non-`Failed` variant either advances to the next or back to [Idle]
  * on cancellation.
  *
- * The Sprint 1 D4 echo path retired in Sprint 2 D5 — the passive accept
+ * The Sprint 1 D4 echo path retired in Sprint 2 D5 - the passive accept
  * thread now drives the audio playback loop instead of mirroring bytes
  * back. Echo helpers still exist in Rust for ad-hoc latency probing.
  */
@@ -41,13 +41,13 @@ sealed interface ConnectionState {
         val psm: Int,
         val negotiatedPhy: Int,
         /**
-         * Sprint 4 D13 — 6-digit decimal SAS derived from the ECDH
+         * Sprint 4 D13 - 6-digit decimal SAS derived from the ECDH
          * shared secret. Kept around for logs / tests; the UI renders
          * the emoji form below instead.
          */
         val sasCode: UInt = 0u,
         /**
-         * Sprint 4 polish — 6 bytes (each indexes a 64-emoji palette
+         * Sprint 4 polish - 6 bytes (each indexes a 64-emoji palette
          * after masking with `0x3F`). The user verifies that the same
          * six animals / plants / weather glyphs appear on both phones.
          */
@@ -84,7 +84,7 @@ sealed interface ConnectionState {
      * and `framesReceived` tick on every 20 ms boundary so the UI can
      * surface a heartbeat.
      *
-     * `muted` (Sprint 4 D12) is `true` when the local mic is off — Tx
+     * `muted` (Sprint 4 D12) is `true` when the local mic is off - Tx
      * keeps the L2CAP socket open but skips encode/send while
      * `AudioRecord` is stopped. Used by push-to-talk and the future
      * "mute me" UI button.
@@ -98,7 +98,7 @@ sealed interface ConnectionState {
         val framesReceived: Int,
         val muted: Boolean = false,
         /**
-         * Sprint 4 polish — sampled once per second by the connector's
+         * Sprint 4 polish - sampled once per second by the connector's
          * stats ticker. `null` until the first sample lands; the UI
          * shows a "warming up" placeholder until then.
          */
@@ -106,7 +106,7 @@ sealed interface ConnectionState {
     ) : ConnectionState
 
     /**
-     * Sprint 3 D11 — the L2CAP socket broke (peer briefly out of range,
+     * Sprint 3 D11 - the L2CAP socket broke (peer briefly out of range,
      * radio glitch); we're trying to bring it back with the cached PSM.
      * `attempt` increments each retry; the window caps at 5 seconds
      * before flipping to [Failed].

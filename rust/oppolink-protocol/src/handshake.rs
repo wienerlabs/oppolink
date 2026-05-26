@@ -1,4 +1,4 @@
-//! GATT handshake message — the only payload exchanged over the BLE GATT
+//! GATT handshake message - the only payload exchanged over the BLE GATT
 //! characteristic before the peers hop to L2CAP.
 //!
 //! Layout (locked in Sprint 1 D3):
@@ -36,7 +36,7 @@ pub const PUBKEY_LEN: usize = 32;
 const HEADER_LEN: usize =
     4 /* magic */ + 1 /* ver */ + 1 /* role */ + PUBKEY_LEN + 2 /* psm */ + 1 /* nick_len */;
 
-/// Maximum on-wire size of a handshake message — fits well inside a default
+/// Maximum on-wire size of a handshake message - fits well inside a default
 /// 23-byte MTU after we negotiate the standard 247-byte MTU on connect.
 pub const HANDSHAKE_MAX_LEN: usize = HEADER_LEN + MAX_NICKNAME_BYTES;
 
@@ -65,7 +65,7 @@ pub struct HandshakeMessage {
 /// byte-wise (big-endian). Returns the role the **local** peer should take.
 ///
 /// Both inputs MUST be parsed from canonical Android `00:11:22:33:44:55`
-/// strings before calling — see `bd_addr_to_bytes`.
+/// strings before calling - see `bd_addr_to_bytes`.
 #[uniffi::export]
 pub fn decide_role(local_bd_addr: String, remote_bd_addr: String) -> Result<Role, HandshakeError> {
     let local = bd_addr_to_bytes(&local_bd_addr)?;
@@ -99,7 +99,7 @@ fn bd_addr_to_bytes(s: &str) -> Result<[u8; 6], HandshakeError> {
 
 #[derive(thiserror::Error, Debug, uniffi::Error)]
 pub enum HandshakeError {
-    #[error("invalid BD_ADDR — expected six colon-separated hex octets")]
+    #[error("invalid BD_ADDR - expected six colon-separated hex octets")]
     BadBdAddress,
     #[error("local and remote BD_ADDR are identical")]
     SameBdAddress,
@@ -121,7 +121,7 @@ pub(crate) fn encode(msg: &HandshakeMessage) -> Vec<u8> {
     let nick = truncate_utf8(&msg.nickname, MAX_NICKNAME_BYTES);
     let nick_bytes = nick.as_bytes();
 
-    // Zero-pad the pubkey to PUBKEY_LEN regardless of what the caller passed —
+    // Zero-pad the pubkey to PUBKEY_LEN regardless of what the caller passed -
     // accepting a shorter input keeps the API forgiving until Sprint 4 wires
     // real ECDH keys.
     let mut pubkey = [0u8; PUBKEY_LEN];

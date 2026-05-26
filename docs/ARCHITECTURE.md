@@ -75,7 +75,7 @@ The community plugin saves a handful of lines but adds an out-of-tree
 maintenance dependency we cannot easily fork. Two `Exec` tasks give us:
 
 - Explicit input/output declarations Gradle can cache against.
-- Trivial debugging — the exact `cargo ndk` and `uniffi-bindgen` command lines
+- Trivial debugging - the exact `cargo ndk` and `uniffi-bindgen` command lines
   appear in the build log.
 - Zero risk of breaking on a future AGP upgrade.
 
@@ -90,4 +90,4 @@ The cost is ~30 lines of `build.gradle.kts` in `:core-protocol`. Worth it.
 - Encryption (Sprint 4 D13).
 
 These are documented here only so the module split is justified by the
-upcoming work — not to suggest D1 includes any of it.
+upcoming work - not to suggest D1 includes any of it.

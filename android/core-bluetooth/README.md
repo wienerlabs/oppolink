@@ -5,49 +5,49 @@ L2CAP CoC socket lifecycle.
 
 ## Boundary
 - **In**: `:core-protocol` for typed wire-format manufacturer-data and the
-  service UUID (Rust is the source of truth — Kotlin must not parse the
+  service UUID (Rust is the source of truth - Kotlin must not parse the
   payload by hand).
 - **Out**: `PeerScanner` and `PeerAdvertiser` interfaces that the `:app`
   layer drives; `Peer` data class for the UI.
 
 ## Sprint 1 D2 scope (shipped)
-- `OppoLinkUuid` — service UUID + manufacturer ID, sourced from Rust via
+- `OppoLinkUuid` - service UUID + manufacturer ID, sourced from Rust via
   UniFFI so any wire-format change in Rust propagates automatically.
-- `BluetoothPermissions` — single source of truth for the runtime permission
+- `BluetoothPermissions` - single source of truth for the runtime permission
   set (handles the API 31 split between `BLUETOOTH_SCAN/CONNECT/ADVERTISE`
   and the legacy API 29–30 set).
-- `PeerScanner` — `BluetoothLeScanner` wrapper. Filters by service UUID,
+- `PeerScanner` - `BluetoothLeScanner` wrapper. Filters by service UUID,
   parses manufacturer-data via Rust, exposes `StateFlow<List<Peer>>` with
   per-peer staleness eviction.
-- `PeerAdvertiser` — `BluetoothLeAdvertiser` wrapper. Two-packet advertise:
+- `PeerAdvertiser` - `BluetoothLeAdvertiser` wrapper. Two-packet advertise:
   primary carries the service UUID, scan response carries the
   manufacturer-data payload (nickname + capability bitmap).
-- `BluetoothModule` — Hilt singleton providers for `BluetoothManager`,
+- `BluetoothModule` - Hilt singleton providers for `BluetoothManager`,
   `PeerScanner`, and `PeerAdvertiser`.
 
 ## Sprint 1 D3 scope (shipped)
-- `ConnectionState` sealed interface — `Idle` / `RoleDecided` / `Connecting`
+- `ConnectionState` sealed interface - `Idle` / `RoleDecided` / `Connecting`
   / `Handshaking` / `PsmExchanged` / `Failed`.
-- `GattServerHost` — registers the OppoLink GATT service, allocates an
+- `GattServerHost` - registers the OppoLink GATT service, allocates an
   insecure L2CAP server socket via `BluetoothAdapter.listenUsingInsecureL2capChannel()`,
   and bakes the resulting PSM into the handshake characteristic. Singleton,
   kept alive while the discovery screen is mounted.
-- `GattClient` — `suspend fetchHandshake(peer)` performs `connectGatt` →
+- `GattClient` - `suspend fetchHandshake(peer)` performs `connectGatt` →
   `discoverServices` → `readCharacteristic`, parses the payload via Rust
   `parseHandshake`, and tears the GATT session down. Cancellation closes
   the GATT handle.
-- `PeerConnector` — orchestrator with `StateFlow<ConnectionState>`. The
+- `PeerConnector` - orchestrator with `StateFlow<ConnectionState>`. The
   tapping side always plays the client role; Rust `decide_role` is reserved
   for Sprint 4 D13 where both peers exchange identifiers over an open
   channel.
 
 ## Sprint 4 polish (shipped)
-- **Stats ticker** — instance-level coroutine samples
+- **Stats ticker** - instance-level coroutine samples
   `JitterBuffer.stats()` every 1 s while `InCall`, pushes the snapshot
   into `ConnectionState.InCall.jitterStats`. The UI renders a
   `JitterDiagnosticsCard` (buffered/target depth, push/pop count, PLC
   fires, late drops, duplicates).
-- **AEAD-flood disconnect** — `SessionEndReason.AeadFlood` variant.
+- **AEAD-flood disconnect** - `SessionEndReason.AeadFlood` variant.
   Rx tracks `consecutiveDecryptFailures`; three in a row tear the
   session down and `runDuplexCall` returns `Failed("Suspicious
   traffic …")` without attempting a reconnect (the attacker can just
@@ -57,7 +57,7 @@ L2CAP CoC socket lifecycle.
 - `GattServerHost.start` generates an ephemeral Curve25519 keypair and
   puts the pubkey into the handshake characteristic (was zero-padded
   in v1). `keyPair` is held until the next [stop] call.
-- `GattServerHost.deriveServerSession(socket)` — reads the first
+- `GattServerHost.deriveServerSession(socket)` - reads the first
   32 bytes off the freshly-accepted L2CAP socket (the client's pubkey),
   runs ECDH, returns the matching `SessionKey`. Reconnect-safe because
   ECDH is deterministic for the same peer pubkey.
@@ -74,15 +74,15 @@ L2CAP CoC socket lifecycle.
 - Tx loop uses `sessionKey.encryptFrame(seq, ts, opus)` instead of
   cleartext `buildAudioFrame`. Rx loop uses `sessionKey.decryptFrame`
   and drops AEAD failures (jitter buffer PLCs the gap).
-- `ConnectionState.PsmExchanged.sasCode: UInt` — 6-digit decimal SAS.
+- `ConnectionState.PsmExchanged.sasCode: UInt` - 6-digit decimal SAS.
 
 ## Sprint 4 D12 scope (shipped)
-- `PeerConnector.setMuted(boolean)` — instance-level `AtomicBoolean`
+- `PeerConnector.setMuted(boolean)` - instance-level `AtomicBoolean`
   + `AtomicReference<AudioCapture>` so the UI can toggle the mic at
   any time, even before `runCall` has spun up its threads.
 - Tx loop reads `muted` once per tick. While muted: emits an
   `InCall(muted = true)` state update, parks 20 ms, skips encode/send.
-  No frames hit the wire — the peer's jitter buffer PLCs through the
+  No frames hit the wire - the peer's jitter buffer PLCs through the
   silence and unmute is seamless.
 - `AudioCapture.setMuted(boolean)` calls the underlying
   `AudioRecord.stop()` / `startRecording()` so the mic hardware truly
@@ -91,7 +91,7 @@ L2CAP CoC socket lifecycle.
   `AudioRecord` session id.
 
 ## Sprint 3 D11 scope (shipped)
-- `ConnectionState.Reconnecting(role, peer, psm, attempt)` — new
+- `ConnectionState.Reconnecting(role, peer, psm, attempt)` - new
   variant for the 5-second reopen window.
 - `PeerConnector.runDuplexCall` refactored into an outer reconnect loop
   + an inner `runDuplexSession` that owns the socket-bound threads.
@@ -100,21 +100,21 @@ L2CAP CoC socket lifecycle.
 - Client side: on SocketLost (and inside the call deadline if any),
   `attemptReconnect(peer, psm)` polls `client.openL2capSocket` every
   500 ms for up to 5 s. Success → resume; timeout → `Failed`.
-- Server side: `OppoLinkAccept` thread is now an `accept` loop —
+- Server side: `OppoLinkAccept` thread is now an `accept` loop -
   `accept()` → `runDuplexCall` → on SocketLost loops back to `accept`,
   so a fresh client connection rebinds the same listener.
 - Audio resources (`AudioCapture` / `AudioPlayback`) live in the outer
   loop, so a reconnect doesn't re-prime the mic / re-open the speaker.
   Encoder / decoder / jitter buffer are reset per session so libopus
   state doesn't drift across the gap.
-- `seq` continues from the per-call `framesSent` counter — the peer's
+- `seq` continues from the per-call `framesSent` counter - the peer's
   signed-delta arithmetic accepts the resumed stream as future frames.
 
-## Sprint 3 D9 scope (shipped — `:app` side)
+## Sprint 3 D9 scope (shipped - `:app` side)
 - `:app/.../service/CallForegroundService` owns the call lifecycle when
   the screen turns off. Reads the current peer from `connector.state`
   (must be in `PsmExchanged`), starts foreground with notification
-  ("OppoLink — call active mm:ss" + "End call" action), drives
+  ("OppoLink - call active mm:ss" + "End call" action), drives
   `connector.runCall(peer, durationMs = null)` on its own coroutine
   scope, tears down on `CallEnded` / `Failed`.
 - `:app/.../discovery/ConnectionViewModel.startCall()` now fires the
@@ -128,7 +128,7 @@ L2CAP CoC socket lifecycle.
   jitter buffer (`oppolink-protocol::JitterBuffer`) sits between Rx and
   Play, absorbing arrival jitter and triggering PLC when a frame is
   missing.
-- Wire format unchanged — D8 is pure receiver-side machinery. Adaptive
+- Wire format unchanged - D8 is pure receiver-side machinery. Adaptive
   depth bounded at 2–5 frames (40–100 ms).
 - Shutdown sequence gains a third grace-wait for the Play thread so it
   can drain any frames still buffered.
@@ -143,7 +143,7 @@ L2CAP CoC socket lifecycle.
   a wrapper lock. `L2capChannel` documents the one-sender / one-receiver
   contract.
 - Server-side accept thread now hands the socket to `runDuplexCall` with
-  `role=SERVER` and `durationMs=null` — the call runs until the client
+  `role=SERVER` and `durationMs=null` - the call runs until the client
   closes the socket. A synthetic `Peer` is built from
   `BluetoothSocket.remoteDevice`.
 
@@ -152,17 +152,17 @@ L2CAP CoC socket lifecycle.
   capture → encode → L2CAP TX pipeline. D6 upgraded it to duplex.
 
 ## Sprint 1 D4 scope (shipped)
-- `L2capChannel` — `AutoCloseable` wrapper around `BluetoothSocket` with
+- `L2capChannel` - `AutoCloseable` wrapper around `BluetoothSocket` with
   blocking `send` / `receiveExact`. Owned by exactly one thread.
-- `GattServerHost.acceptL2cap()` — blocking accept on the listening L2CAP
+- `GattServerHost.acceptL2cap()` - blocking accept on the listening L2CAP
   server socket. Called from a dedicated worker `Thread` started by
   `PeerConnector.startPassiveServer`.
-- `GattClient.openL2capSocket(peer, psm)` — client-side `createInsecureL2capChannel`
+- `GattClient.openL2capSocket(peer, psm)` - client-side `createInsecureL2capChannel`
   + blocking `connect()`.
 - `GattClient.fetchHandshake` now snapshots the negotiated PHY via
   `BluetoothGatt.readPhy()` and returns a `GattHandshakeResult` carrying
   both the parsed handshake and the PHY (1 / 2 / 3 = LE 1M / 2M / Coded).
-- `PeerConnector.runEchoTest(peer, samples)` — drives 10 round-trips on
+- `PeerConnector.runEchoTest(peer, samples)` - drives 10 round-trips on
   `OppoLinkEchoClient` thread (priority MAX), surfaces progress on
   `ConnectionState.EchoInProgress`, finalises with
   `ConnectionState.EchoCompleted(stats, negotiatedPhy)`. Server side runs

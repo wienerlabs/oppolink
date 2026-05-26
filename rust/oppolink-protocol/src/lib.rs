@@ -2,9 +2,9 @@
 //!
 //! This crate owns:
 //!   - the 128-bit BLE service UUID and the on-air manufacturer-data layout,
-//!   - the handshake state machine (Curve25519 ECDH at v1) — Sprint 4,
-//!   - the AEAD layer (ChaCha20-Poly1305 at v1) — Sprint 4,
-//!   - typed framing of 20 ms Opus packets — Sprint 2.
+//!   - the handshake state machine (Curve25519 ECDH at v1) - Sprint 4,
+//!   - the AEAD layer (ChaCha20-Poly1305 at v1) - Sprint 4,
+//!   - typed framing of 20 ms Opus packets - Sprint 2.
 //!
 //! Sprint 1 D2 ships the discovery primitives: service UUID, manufacturer-data
 //! encode/decode, and the capability bitmap.
@@ -37,7 +37,7 @@ pub use session::{
 
 /// 128-bit service UUID used in BLE advertising. ASCII "OPPL" on word-boundaries
 /// keeps the UUID easy to spot in scan dumps. **Do not change without bumping
-/// [`PROTOCOL_VERSION`] — peers filter on this UUID.**
+/// [`PROTOCOL_VERSION`] - peers filter on this UUID.**
 pub const SERVICE_UUID: &str = "4f50504c-0001-4f50-504c-000000000001";
 
 /// 16-bit characteristic ID used inside the GATT service for the handshake.
@@ -45,7 +45,7 @@ pub const SERVICE_UUID: &str = "4f50504c-0001-4f50-504c-000000000001";
 /// when the GATT layer lands in Sprint 1 D3.
 pub const HANDSHAKE_CHAR_SUFFIX: &str = "00000002";
 
-/// UniFFI accessor — Kotlin can't read Rust `const &str`, so we expose a fn.
+/// UniFFI accessor - Kotlin can't read Rust `const &str`, so we expose a fn.
 #[uniffi::export]
 pub fn service_uuid() -> String {
     SERVICE_UUID.to_string()
@@ -58,7 +58,7 @@ pub fn manufacturer_id() -> u16 {
 }
 
 /// 128-bit GATT characteristic UUID that holds the handshake payload.
-/// `4F50504C-0001-4F50-504C-000000000002` — the [`SERVICE_UUID`] with its
+/// `4F50504C-0001-4F50-504C-000000000002` - the [`SERVICE_UUID`] with its
 /// trailing suffix bumped from `…0001` to `…0002`.
 #[uniffi::export]
 pub fn handshake_char_uuid() -> String {
@@ -113,7 +113,7 @@ pub fn echo_packet_size() -> u32 {
 }
 
 /// Build the on-wire bytes for an echo packet at sequence number `seq`.
-/// Always returns exactly [`ECHO_PACKET_LEN`] bytes — 4-byte big-endian seq
+/// Always returns exactly [`ECHO_PACKET_LEN`] bytes - 4-byte big-endian seq
 /// prefix followed by zero-filled body.
 #[uniffi::export]
 pub fn build_echo_packet(seq: u32) -> Vec<u8> {

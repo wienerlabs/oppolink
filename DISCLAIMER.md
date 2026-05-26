@@ -1,10 +1,10 @@
-# DISCLAIMER — Trademark and Affiliation
+# DISCLAIMER - Trademark and Affiliation
 
 ## Independence statement
 
 **OppoLink is an independent, community-driven, open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected to Guangdong OPPO Mobile Telecommunications Corp., Ltd. ("OPPO") or any of its subsidiaries or affiliates.**
 
-The name "OppoLink" refers to a compatibility target — a software project designed to work well on OPPO-branded devices running ColorOS. The "Oppo" component of the project name is descriptive, not source-identifying. We make no claim to any trademark, service mark, or trade name owned by OPPO.
+The name "OppoLink" refers to a compatibility target - a software project designed to work well on OPPO-branded devices running ColorOS. The "Oppo" component of the project name is descriptive, not source-identifying. We make no claim to any trademark, service mark, or trade name owned by OPPO.
 
 ## Trademarks
 

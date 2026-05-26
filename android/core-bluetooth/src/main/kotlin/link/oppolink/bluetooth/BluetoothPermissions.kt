@@ -26,7 +26,7 @@ object BluetoothPermissions {
             )
         } else {
             // API 29–30: legacy BLE permissions + FINE_LOCATION (yes, even for
-            // a non-location scan — the platform requires it pre-S).
+            // a non-location scan - the platform requires it pre-S).
             listOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
             )

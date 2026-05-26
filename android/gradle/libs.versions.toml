@@ -55,7 +55,7 @@ hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", ve
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 
-# JNA — required by UniFFI's Kotlin runtime
+# JNA - required by UniFFI's Kotlin runtime
 net-java-jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 
 # Test

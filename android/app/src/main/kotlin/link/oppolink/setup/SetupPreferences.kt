@@ -11,7 +11,7 @@ import javax.inject.Singleton
  * not have to know about keys / edit-blocks.
  *
  * Only one flag in v1: whether the user has finished the ColorOS
- * battery-whitelist wizard. The wizard is opt-in — `false` is a valid
+ * battery-whitelist wizard. The wizard is opt-in - `false` is a valid
  * permanent state.
  */
 @Singleton

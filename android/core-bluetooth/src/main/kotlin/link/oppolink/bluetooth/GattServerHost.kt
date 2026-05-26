@@ -31,7 +31,7 @@ import uniffi.oppolink_protocol.handshakeCharUuid
  *    via `BluetoothAdapter.listenUsingInsecureL2capChannel()`, and bakes the
  *    resulting PSM into the handshake characteristic's stored value.
  *  - The GATT layer auto-replies to every read on the characteristic with
- *    the static payload — no per-connection logic is required for D3.
+ *    the static payload - no per-connection logic is required for D3.
  *  - [stop] closes the L2CAP server socket and tears down the GATT service.
  *
  * D4 will reuse the [serverSocket] to `accept()` an incoming L2CAP connection.
@@ -45,7 +45,7 @@ internal class GattServerHost(
     private var serverSocket: BluetoothServerSocket? = null
     private var handshakeChar: BluetoothGattCharacteristic? = null
     private var allocatedPsm: Int = 0
-    /** Sprint 4 D13 — server's ephemeral Curve25519 keypair, generated in [start]. */
+    /** Sprint 4 D13 - server's ephemeral Curve25519 keypair, generated in [start]. */
     private var keyPair: EphemeralKeyPair? = null
 
     private val callback = object : BluetoothGattServerCallback() {
@@ -61,13 +61,13 @@ internal class GattServerHost(
     @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_CONNECT])
     fun start(nickname: String) {
         val adapter = adapter ?: error("Bluetooth adapter unavailable")
-        // Allocate L2CAP server socket first — we need the PSM before we can
+        // Allocate L2CAP server socket first - we need the PSM before we can
         // build the handshake payload.
         val socket = adapter.listenUsingInsecureL2capChannel()
         serverSocket = socket
         allocatedPsm = socket.psm
 
-        // Sprint 4 D13 — server's ephemeral keypair. Pubkey goes into the
+        // Sprint 4 D13 - server's ephemeral keypair. Pubkey goes into the
         // handshake; the secret half is kept on this object and consumed
         // when an inbound L2CAP socket completes its first 32-byte
         // pubkey exchange (see [deriveServerSession]).
@@ -97,7 +97,7 @@ internal class GattServerHost(
         ).also { it.addCharacteristic(char) }
 
         val server = manager.openGattServer(context, callback)
-            ?: error("openGattServer returned null — Bluetooth off?")
+            ?: error("openGattServer returned null - Bluetooth off?")
         gattServer = server
         if (!server.addService(service)) {
             error("Failed to register handshake GATT service")
@@ -109,7 +109,7 @@ internal class GattServerHost(
     /**
      * Blocking accept on the listening L2CAP server socket.
      *
-     * MUST be called from a dedicated worker [Thread] — the call parks the
+     * MUST be called from a dedicated worker [Thread] - the call parks the
      * caller until a client connects or the socket is closed underneath us.
      * Returns `null` if the server is no longer running (e.g. [stop] fired
      * concurrently). The caller owns the returned socket and is responsible
@@ -128,7 +128,7 @@ internal class GattServerHost(
     }
 
     /**
-     * Sprint 4 D13 — read the client's 32-byte Curve25519 pubkey off the
+     * Sprint 4 D13 - read the client's 32-byte Curve25519 pubkey off the
      * fresh L2CAP socket and ECDH it against our own keypair. Throws on
      * EOF / IO failure; the caller treats that as "the socket died
      * before handshake completed" and closes everything.

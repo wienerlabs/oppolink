@@ -1,4 +1,4 @@
-# CLAUDE.md — OppoLink Session Brief
+# CLAUDE.md - OppoLink Session Brief
 
 This file is loaded into every Claude Code session in this repo. Keep it terse, current, and load-bearing.
 
@@ -7,21 +7,21 @@ BLE-only full-duplex voice protocol for Android, tuned for Oppo / ColorOS. Two p
 
 ## Non-negotiables
 - **Offline-only**. Never add a dependency that opens a socket to the public internet. No telemetry, no crash reporters that phone home, no analytics. Even "anonymous" telemetry is a hard no.
-- **No allocations in the audio hot path** after `call.start()`. Pre-allocate ring buffers, jitter buffers, encode/decode scratch in `prepare()`. The audio thread budget is 20 ms — a GC pause kills the call.
+- **No allocations in the audio hot path** after `call.start()`. Pre-allocate ring buffers, jitter buffers, encode/decode scratch in `prepare()`. The audio thread budget is 20 ms - a GC pause kills the call.
 - **No coroutines on the audio hot path**. Coroutine dispatcher scheduling jitter is unacceptable for 20 ms ticks. Use a dedicated `Thread` at `THREAD_PRIORITY_URGENT_AUDIO`. Coroutines are fine for UI / GATT / control plane.
 - **Trademark hygiene**. Do not use the word "Oppo" in package names, signing certificates, store listings, or any artifact that could be construed as official. "OppoLink" is acceptable as a compatibility-targeting indie project name. See [DISCLAIMER.md](DISCLAIMER.md).
 - **AGPL-3.0 + copyleft awareness**. Any code you pull in must be AGPL-compatible. No proprietary SDKs, no "free for non-commercial" licenses.
-- **No em dash (`—`) anywhere**: code, comments, docs, README, commit messages, UI copy. Use a regular hyphen (`-`), colon (`:`), parentheses, period, or rewrite the sentence. Lifted to a global rule on 2026-05-26.
+- **No em dash (U+2014, the long horizontal dash) anywhere**: code, comments, docs, README, commit messages, UI copy. Use a regular hyphen (`-`), colon (`:`), parentheses, period, or rewrite the sentence. Lifted to a global rule on 2026-05-26.
 
 ## Architecture quick reference
-- `android/app` — Compose UI, MainActivity, ForegroundService. Single-activity.
-- `android/core-bluetooth` — GATT advertising/scanning, L2CAP CoC socket.
-- `android/core-audio` — `AudioRecord` / `AudioTrack` wrappers, hardware effects (AEC/NS/AGC).
-- `android/core-protocol` — UniFFI-generated Kotlin bindings to the Rust core.
-- `android/coloros-compat` — version-detected deep links to ColorOS settings screens.
-- `rust/oppolink-codec` — libopus FFI, 20 ms frame encode/decode, framing header.
-- `rust/oppolink-jitter` — adaptive jitter buffer + PLC orchestration.
-- `rust/oppolink-protocol` — wire format, handshake state machine, AEAD (ChaCha20-Poly1305).
+- `android/app` - Compose UI, MainActivity, ForegroundService. Single-activity.
+- `android/core-bluetooth` - GATT advertising/scanning, L2CAP CoC socket.
+- `android/core-audio` - `AudioRecord` / `AudioTrack` wrappers, hardware effects (AEC/NS/AGC).
+- `android/core-protocol` - UniFFI-generated Kotlin bindings to the Rust core.
+- `android/coloros-compat` - version-detected deep links to ColorOS settings screens.
+- `rust/oppolink-codec` - libopus FFI, 20 ms frame encode/decode, framing header.
+- `rust/oppolink-jitter` - adaptive jitter buffer + PLC orchestration.
+- `rust/oppolink-protocol` - wire format, handshake state machine, AEAD (ChaCha20-Poly1305).
 
 ## Tech stack lock
 - Kotlin 2.1.0, AGP 8.7.3, Gradle 8.10.2, JDK 21.
@@ -45,7 +45,7 @@ The `:core-protocol:preBuild` task depends on both steps above. See `android/cor
 - **Kotlin modules**: each has a `README.md` stating the module boundary in 1–3 sentences.
 
 ## What to do when starting a Sprint deliverable
-1. **Read [docs/TASK_LIST.md](docs/TASK_LIST.md) first** — it has the
+1. **Read [docs/TASK_LIST.md](docs/TASK_LIST.md) first** - it has the
    current deliverable's work units, locked decisions, deliberate non-goals,
    and the CI burns to avoid. Read the burns before opening a new
    investigation when CI fails.
@@ -62,7 +62,7 @@ The `:core-protocol:preBuild` task depends on both steps above. See `android/cor
 - **Never set `[profile.release].strip = "symbols"` in `rust/Cargo.toml`.** Linux
   ELF strip removes the UniFFI metadata sections together with the regular
   symbol table; `uniffi-bindgen generate --library …release/lib*.so` then
-  runs to completion, prints nothing, writes nothing — the Kotlin source
+  runs to completion, prints nothing, writes nothing - the Kotlin source
   set ends up empty and `:core-bluetooth:compileDebugKotlin` fails with
   `Unresolved reference 'uniffi'`. cargo-ndk strips the Android-shipped .so
   on its own pass.
