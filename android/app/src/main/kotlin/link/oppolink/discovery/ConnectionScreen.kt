@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -381,6 +383,17 @@ private fun AudioLevelCard(levels: AudioLevels, modifier: Modifier = Modifier) {
 
 @Composable
 private fun LevelRow(label: String, level: Int) {
+    // Polish - the raw peak meter jitters at every 20 ms audio frame
+    // boundary, which makes the bar visually noisy. animateFloatAsState
+    // with a short tween gives the bar a smooth follow without trailing
+    // far enough behind to obscure clipping. Numeric readout still
+    // shows the raw level so power users can read instantaneous peaks.
+    val targetFraction = (level / 100f).coerceIn(0f, 1f)
+    val animatedFraction by animateFloatAsState(
+        targetValue = targetFraction,
+        animationSpec = tween(durationMillis = 120),
+        label = "audioLevel-$label",
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             label,
@@ -388,7 +401,7 @@ private fun LevelRow(label: String, level: Int) {
             modifier = Modifier.width(40.dp),
         )
         LinearProgressIndicator(
-            progress = { (level / 100f).coerceIn(0f, 1f) },
+            progress = { animatedFraction },
             modifier = Modifier.weight(1f),
         )
         Text(
