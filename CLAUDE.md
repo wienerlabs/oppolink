@@ -11,6 +11,7 @@ BLE-only full-duplex voice protocol for Android, tuned for Oppo / ColorOS. Two p
 - **No coroutines on the audio hot path**. Coroutine dispatcher scheduling jitter is unacceptable for 20 ms ticks. Use a dedicated `Thread` at `THREAD_PRIORITY_URGENT_AUDIO`. Coroutines are fine for UI / GATT / control plane.
 - **Trademark hygiene**. Do not use the word "Oppo" in package names, signing certificates, store listings, or any artifact that could be construed as official. "OppoLink" is acceptable as a compatibility-targeting indie project name. See [DISCLAIMER.md](DISCLAIMER.md).
 - **AGPL-3.0 + copyleft awareness**. Any code you pull in must be AGPL-compatible. No proprietary SDKs, no "free for non-commercial" licenses.
+- **No em dash (`—`) anywhere**: code, comments, docs, README, commit messages, UI copy. Use a regular hyphen (`-`), colon (`:`), parentheses, period, or rewrite the sentence. Lifted to a global rule on 2026-05-26.
 
 ## Architecture quick reference
 - `android/app` — Compose UI, MainActivity, ForegroundService. Single-activity.
