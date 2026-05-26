@@ -60,7 +60,11 @@ fun DiscoveryScreen(
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
-            DiscoveryHeader(state, onSettings = onSettings)
+            DiscoveryHeader(
+                state = state,
+                onRescan = viewModel::rescan,
+                onSettings = onSettings,
+            )
             Spacer(Modifier.height(16.dp))
             ErrorBanner(state)
             PeerList(state.peers, onPeerTap = onPeerTap, modifier = Modifier.fillMaxSize())
@@ -69,7 +73,11 @@ fun DiscoveryScreen(
 }
 
 @Composable
-private fun DiscoveryHeader(state: DiscoveryUiState, onSettings: () -> Unit) {
+private fun DiscoveryHeader(
+    state: DiscoveryUiState,
+    onRescan: () -> Unit,
+    onSettings: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -86,8 +94,13 @@ private fun DiscoveryHeader(state: DiscoveryUiState, onSettings: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
             )
         }
-        androidx.compose.material3.TextButton(onClick = onSettings) {
-            Text("Settings")
+        Column(horizontalAlignment = Alignment.End) {
+            androidx.compose.material3.TextButton(onClick = onRescan) {
+                Text("Rescan")
+            }
+            androidx.compose.material3.TextButton(onClick = onSettings) {
+                Text("Settings")
+            }
         }
     }
 }

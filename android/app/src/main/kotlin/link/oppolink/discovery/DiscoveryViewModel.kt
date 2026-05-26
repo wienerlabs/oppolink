@@ -65,6 +65,16 @@ class DiscoveryViewModel @Inject constructor(
         connector.stopPassiveServer()
     }
 
+    /**
+     * Stop + restart scanning so the visible peer list flushes any
+     * staleness in one tick and re-collects from fresh advertisements.
+     * Advertiser keeps running so peers can still see us.
+     */
+    fun rescan() {
+        scanner.stop()
+        scanner.start()
+    }
+
     private fun sanitizeNickname(raw: String): String =
         raw.trim().take(MAX_NICKNAME_DISPLAY_CHARS).ifBlank { "OppoLink peer" }
 
