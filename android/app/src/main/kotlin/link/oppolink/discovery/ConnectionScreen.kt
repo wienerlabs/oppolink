@@ -278,6 +278,7 @@ private fun CallEndedCard(ended: ConnectionState.CallEnded, modifier: Modifier =
             Spacer(Modifier.height(8.dp))
             Stat("frames sent", ended.framesSent)
             Stat("frames received", ended.framesReceived)
+            Stat("reconnects", ended.reconnectAttempts)
             Spacer(Modifier.height(4.dp))
             Text(
                 "PSM ${ended.psm} closed",

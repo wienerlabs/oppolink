@@ -449,6 +449,7 @@ internal class RealPeerConnector(
             psm = psm,
             framesSent = framesSent.get(),
             framesReceived = framesReceived.get(),
+            reconnectAttempts = attempt,
         )
     }
 

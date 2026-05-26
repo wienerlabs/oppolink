@@ -118,13 +118,21 @@ sealed interface ConnectionState {
         val attempt: Int,
     ) : ConnectionState
 
-    /** Call ended normally (peer hung up, user cancelled, end of test loop). */
+    /**
+     * Call ended normally (peer hung up, user cancelled, end of test loop).
+     *
+     * `reconnectAttempts` is the cumulative count of successful socket
+     * reopens across the call (Sprint 3 D11). Zero means the original
+     * L2CAP socket survived the entire session; >0 reveals how resilient
+     * the radio was. Useful telemetry for hardware testing.
+     */
     data class CallEnded(
         val role: Role,
         val peer: Peer,
         val psm: Int,
         val framesSent: Int,
         val framesReceived: Int,
+        val reconnectAttempts: Int = 0,
     ) : ConnectionState
 
     /** Terminal: something went wrong. Always carries a human-readable reason. */
