@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -25,6 +26,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -452,7 +454,14 @@ private fun Footer(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             when {
                 isFailed -> Button(onClick = onRetry) { Text("Retry") }
-                isInCall -> Button(onClick = onEndCall) { Text("End call") }
+                isInCall -> EndCallButton(
+                    // Reconnecting drops the call without a prompt - the
+                    // socket is already gone; double-confirming would just
+                    // delay the cleanup. The confirm dialog only gates the
+                    // live InCall transition.
+                    requireConfirm = state is ConnectionState.InCall,
+                    onConfirm = onEndCall,
+                )
                 canStartCall -> Button(onClick = onStartCall) {
                     Text(
                         if (state is ConnectionState.CallEnded) "Call again" else "Start full-duplex call",
@@ -466,6 +475,52 @@ private fun Footer(
                 OutlinedButton(onClick = onCancel) { Text("Cancel") }
             }
         }
+    }
+}
+
+/**
+ * "End call" with a fat-finger guard. While a call is live we surface a
+ * Material 3 AlertDialog instead of dropping the audio path on the
+ * first tap. The Reconnecting variant skips the prompt entirely - the
+ * socket is gone, an extra modal would just delay cleanup.
+ */
+@Composable
+private fun EndCallButton(
+    requireConfirm: Boolean,
+    onConfirm: () -> Unit,
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    Button(
+        onClick = { if (requireConfirm) showDialog = true else onConfirm() },
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.error,
+            contentColor = MaterialTheme.colorScheme.onError,
+        ),
+    ) {
+        Text("End call")
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("End the call?") },
+            text = {
+                Text(
+                    "Hanging up closes the L2CAP channel and drops the " +
+                        "encrypted session key. You will need to rerun the " +
+                        "SAS verification to reconnect.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    onConfirm()
+                }) { Text("End call") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
