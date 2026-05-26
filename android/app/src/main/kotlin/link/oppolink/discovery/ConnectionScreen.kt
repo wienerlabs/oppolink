@@ -119,6 +119,7 @@ fun ConnectionScreen(
                 state = state,
                 onStartCall = { viewModel.startCall() },
                 onEndCall = { viewModel.cancel() },
+                onRetry = { viewModel.start(peer) },
                 onCancel = {
                     viewModel.cancel()
                     onBack()
@@ -374,6 +375,7 @@ private fun Footer(
     state: ConnectionState,
     onStartCall: () -> Unit,
     onEndCall: () -> Unit,
+    onRetry: () -> Unit,
     onCancel: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -381,6 +383,7 @@ private fun Footer(
         state is ConnectionState.PsmExchanged || state is ConnectionState.CallEnded
     val isInCall =
         state is ConnectionState.InCall || state is ConnectionState.Reconnecting
+    val isFailed = state is ConnectionState.Failed
     val isTerminal = state is ConnectionState.PsmExchanged ||
         state is ConnectionState.CallEnded ||
         state is ConnectionState.Failed ||
@@ -389,6 +392,7 @@ private fun Footer(
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             when {
+                isFailed -> Button(onClick = onRetry) { Text("Retry") }
                 isInCall -> Button(onClick = onEndCall) { Text("End call") }
                 canStartCall -> Button(onClick = onStartCall) {
                     Text(
