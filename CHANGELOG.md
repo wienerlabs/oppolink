@@ -111,3 +111,20 @@ incompatible - the version byte hard-rejects on handshake.
   service is alive; logs a `X% -> Y% over Zs = N%/hour` summary on
   call end. `adb logcat -s BatteryProbe` during the 30-min hardware
   test captures it.
+- **Brand visual identity**: launcher adaptive icon now renders the
+  OppoLink waveform (5 vertical bars) instead of the placeholder
+  wordmark, matching `ic_notification` and the README hero. The
+  Android 12+ `SplashScreen` API ships via
+  `androidx.core:core-splashscreen` 1.0.1 so cold launches show the
+  same logo on the brand background until the first Compose frame.
+- **PermissionGate detail**: the waiting state lists each outstanding
+  runtime permission with a one-line explanation (e.g. "Microphone -
+  Capture your voice while a call is active") and a count-aware
+  button. A lifecycle `ON_RESUME` observer re-checks permissions
+  after a Settings round-trip so the gate self-unblocks without a
+  process restart.
+- **Discovery empty-state checklist**: replaces the single "Looking
+  for nearby peers" line with a state-aware status line + a checklist
+  card covering the three pre-conditions that cover almost every
+  field failure (other phone on Discovery, both within ~10 m,
+  Bluetooth toggle actually on).
