@@ -89,19 +89,23 @@ class CallForegroundService : Service() {
 
         ensureChannel()
         startElapsedMs = SystemClock.elapsedRealtime()
-        startForeground(NOTIFICATION_ID, buildNotification(peer.nickname, 0))
+        startForeground(NOTIFICATION_ID, buildNotification(peer.nickname, 0, state))
 
         // Sprint 4 D14 instrumentation - capture battery drain across the
         // entire call. Stops + summarises in handleStop / on natural call
         // termination via the finally-block below.
         batteryProbe.start(scope)
 
+        // The ticker re-reads connector.state every second so the
+        // notification status suffix (Encrypted / Muted / Reconnecting)
+        // refreshes alongside the elapsed-time counter without spawning a
+        // second state collector.
         tickerJob?.cancel()
         tickerJob = scope.launch {
             while (true) {
                 delay(1_000)
                 val elapsed = SystemClock.elapsedRealtime() - startElapsedMs
-                updateNotification(peer.nickname, elapsed)
+                updateNotification(peer.nickname, elapsed, connector.state.value)
             }
         }
 
@@ -146,7 +150,11 @@ class CallForegroundService : Service() {
         nm.createNotificationChannel(ch)
     }
 
-    private fun buildNotification(peerNick: String, elapsedMs: Long): Notification {
+    private fun buildNotification(
+        peerNick: String,
+        elapsedMs: Long,
+        state: ConnectionState,
+    ): Notification {
         val mmss = formatElapsed(elapsedMs)
         val stopPi = PendingIntent.getService(
             this,
@@ -154,10 +162,34 @@ class CallForegroundService : Service() {
             Intent(this, CallForegroundService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+
+        // The status suffix mirrors the in-app state cards so the user can
+        // read call status from the lock screen without opening OppoLink.
+        // The audio path is always AEAD-encrypted in v2 once we reach the
+        // InCall state, so 'Encrypted' is the default suffix; 'Muted' wins
+        // when push-to-talk has the mic stopped. Reconnecting takes over
+        // entirely because the elapsed counter loses meaning while the
+        // socket is down.
+        val (title, statusSuffix) = when (state) {
+            is ConnectionState.InCall ->
+                getString(R.string.call_notification_title) to
+                    if (state.muted) "Muted" else "Encrypted"
+            is ConnectionState.Reconnecting ->
+                getString(R.string.call_notification_reconnecting_title) to
+                    "Attempt ${state.attempt}"
+            else ->
+                getString(R.string.call_notification_title) to "Encrypted"
+        }
+        val contentText = if (state is ConnectionState.Reconnecting) {
+            "$peerNick · $statusSuffix"
+        } else {
+            "$peerNick · $mmss · $statusSuffix"
+        }
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.call_notification_title))
-            .setContentText("$peerNick · $mmss")
+            .setContentTitle(title)
+            .setContentText(contentText)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -166,9 +198,9 @@ class CallForegroundService : Service() {
             .build()
     }
 
-    private fun updateNotification(peerNick: String, elapsedMs: Long) {
+    private fun updateNotification(peerNick: String, elapsedMs: Long, state: ConnectionState) {
         val nm = getSystemService(NotificationManager::class.java) ?: return
-        nm.notify(NOTIFICATION_ID, buildNotification(peerNick, elapsedMs))
+        nm.notify(NOTIFICATION_ID, buildNotification(peerNick, elapsedMs, state))
     }
 
     private fun formatElapsed(elapsedMs: Long): String {
