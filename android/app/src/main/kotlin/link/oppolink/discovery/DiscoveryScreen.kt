@@ -67,7 +67,12 @@ fun DiscoveryScreen(
             )
             Spacer(Modifier.height(16.dp))
             ErrorBanner(state)
-            PeerList(state.peers, onPeerTap = onPeerTap, modifier = Modifier.fillMaxSize())
+            PeerList(
+                peers = state.peers,
+                isScanning = state.scanState is PeerScanner.State.Scanning,
+                onPeerTap = onPeerTap,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -131,17 +136,12 @@ private fun ErrorBanner(state: DiscoveryUiState) {
 @Composable
 private fun PeerList(
     peers: List<Peer>,
+    isScanning: Boolean,
     onPeerTap: (Peer) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (peers.isEmpty()) {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            Text(
-                text = "Looking for nearby peers…",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        EmptyPeerList(isScanning = isScanning, modifier = modifier)
         return
     }
     LazyColumn(
@@ -152,6 +152,74 @@ private fun PeerList(
         items(peers, key = { it.bdAddress }) { peer ->
             PeerRow(peer, onTap = { onPeerTap(peer) })
         }
+    }
+}
+
+/**
+ * Empty discovery state. We split it into a leading status line that
+ * tracks whether the radio is actually scanning vs. idle, plus a fixed
+ * checklist of the two pre-conditions a user typically gets wrong
+ * (other phone not running OppoLink, distance too high). Keeps the
+ * "what now?" anchor in front of the user without scrolling.
+ */
+@Composable
+private fun EmptyPeerList(isScanning: Boolean, modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 24.dp),
+        ) {
+            Text(
+                text = if (isScanning) "Looking for nearby peers" else "Scanner is idle",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = if (isScanning) {
+                    "Peers usually appear within 5-10 seconds once both phones are advertising."
+                } else {
+                    "Tap Rescan to start a fresh scan window."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            EmptyChecklistCard()
+        }
+    }
+}
+
+@Composable
+private fun EmptyChecklistCard() {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "Checklist",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            ChecklistRow("The other phone is running OppoLink and on the Discovery screen.")
+            ChecklistRow("Both phones are within ~10 metres line of sight.")
+            ChecklistRow("Bluetooth is enabled on both phones (system toggle, not airplane mode).")
+        }
+    }
+}
+
+@Composable
+private fun ChecklistRow(text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text("·", style = MaterialTheme.typography.bodyLarge)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
