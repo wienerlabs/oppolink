@@ -1,4 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      Day-to-day theme used by MainActivity once the splash dismisses.
+      Kept on `android:Theme.Material.Light.NoActionBar` so the Compose
+      Material3 stack owns colours; the system theme only has to clear
+      the action bar.
+    -->
     <style name="Theme.OppoLink" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+      Sprint 4 polish - branded splash. The SplashScreen compatibility
+      library tints `windowSplashScreenBackground` over the whole
+      window and renders `windowSplashScreenAnimatedIcon` centred on
+      top while MainActivity inflates. `postSplashScreenTheme` is the
+      theme the system swaps in after super.onCreate returns, so the
+      Compose surface keeps the same look as Theme.OppoLink.
+
+      The icon path is identical to the adaptive launcher foreground,
+      which keeps the launcher tap -> splash transition seamless on
+      Android 12+.
+    -->
+    <style name="Theme.OppoLink.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.OppoLink</item>
+    </style>
 </resources>
