@@ -18,10 +18,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -50,6 +55,7 @@ fun SettingsScreen(
         ) {
             Header(onBack = onBack)
             AppInfoSection(viewModel)
+            NicknameSection(viewModel)
             if (viewModel.isColorOs) {
                 ColorOsSection(viewModel)
             }
@@ -80,6 +86,36 @@ private fun AppInfoSection(viewModel: SettingsViewModel) {
             InfoRow("Version code", viewModel.versionCode.toString())
             InfoRow("Wire protocol", "v2 (Curve25519 + ChaCha20-Poly1305)")
             InfoRow("License", "AGPL-3.0")
+        }
+    }
+}
+
+@Composable
+private fun NicknameSection(viewModel: SettingsViewModel) {
+    var nickname by remember { mutableStateOf(viewModel.currentNickname()) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            SectionTitle("Nickname")
+            Text(
+                "What other OppoLink peers see in their discovery list. " +
+                    "Blank uses your device model. Takes effect the next " +
+                    "time you open OppoLink.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = nickname,
+                onValueChange = { nickname = it.take(64) },
+                label = { Text("Display name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { viewModel.updateNickname(nickname) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Save") }
         }
     }
 }

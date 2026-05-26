@@ -16,6 +16,7 @@ import link.oppolink.bluetooth.Peer
 import link.oppolink.bluetooth.PeerAdvertiser
 import link.oppolink.bluetooth.PeerConnector
 import link.oppolink.bluetooth.PeerScanner
+import link.oppolink.setup.SetupPreferences
 
 /**
  * Drives the Sprint 1 D2 discovery screen.
@@ -30,10 +31,18 @@ class DiscoveryViewModel @Inject constructor(
     private val scanner: PeerScanner,
     private val advertiser: PeerAdvertiser,
     private val connector: PeerConnector,
+    setupPrefs: SetupPreferences,
 ) : ViewModel() {
 
-    /** Best-effort display nickname; user-editable in Sprint 4. */
-    val deviceNickname: String = sanitizeNickname("${Build.MANUFACTURER} ${Build.MODEL}")
+    /**
+     * Display nickname. Reads from [SetupPreferences.customNickname] if
+     * the user set one in Settings; otherwise falls back to the device
+     * model. Computed once at ViewModel construction so an in-flight
+     * advertise/scan cycle isn't perturbed mid-call by a Settings save.
+     */
+    val deviceNickname: String = sanitizeNickname(
+        setupPrefs.customNickname ?: "${Build.MANUFACTURER} ${Build.MODEL}",
+    )
 
     val uiState: StateFlow<DiscoveryUiState> = combine(
         scanner.state,

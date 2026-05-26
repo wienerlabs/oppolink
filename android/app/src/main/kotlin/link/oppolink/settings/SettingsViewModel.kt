@@ -35,6 +35,19 @@ class SettingsViewModel @Inject constructor(
     val isColorOs: Boolean = ColorOsSettings.isColorOs()
     val colorOsVersion: String = ColorOsSettings.colorOsVersion()
 
+    /** Currently-persisted custom nickname, or empty string. */
+    fun currentNickname(): String = setupPrefs.customNickname.orEmpty()
+
+    /**
+     * Persist `nickname` (trimmed). Blank input clears the override so
+     * we fall back to `Build.MANUFACTURER + MODEL`. The 16-byte on-wire
+     * truncation lives in the BLE advertise path; we keep the UI value
+     * verbatim so the user sees what they typed.
+     */
+    fun updateNickname(nickname: String) {
+        setupPrefs.customNickname = nickname.trim().ifBlank { null }
+    }
+
     /** Whether the first-run wizard would fire today. */
     val wizardOutstanding: Boolean
         get() = isColorOs && !setupPrefs.colorOsSetupComplete
