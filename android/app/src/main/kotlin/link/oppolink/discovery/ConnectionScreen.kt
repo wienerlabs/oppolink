@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -19,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -91,6 +93,12 @@ fun ConnectionScreen(
                         viewModel.cancel()
                         onBack()
                     },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (state is ConnectionState.Reconnecting) {
+                ReconnectingCard(
+                    reconnecting = state as ConnectionState.Reconnecting,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -323,6 +331,36 @@ private fun Stat(name: String, value: String) {
     ) {
         Text(name, style = MaterialTheme.typography.bodyMedium)
         Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun ReconnectingCard(
+    reconnecting: ConnectionState.Reconnecting,
+    modifier: Modifier = Modifier,
+) {
+    Card(modifier = modifier) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Reconnecting, attempt ${reconnecting.attempt}",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "Reopening L2CAP on PSM ${reconnecting.psm} - 5 s window.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
