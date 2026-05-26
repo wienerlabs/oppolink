@@ -2,6 +2,8 @@ package link.oppolink.settings
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -76,7 +78,32 @@ class SettingsViewModel @Inject constructor(
         setupPrefs.colorOsSetupComplete = false
     }
 
+    /**
+     * Hand the source-code URL off to the system browser. The OppoLink
+     * process itself never opens an internet socket - the ACTION_VIEW
+     * intent is resolved by a separate browser process, which keeps the
+     * offline-only invariant intact while still letting the user verify
+     * the AGPL-3.0 source.
+     */
+    fun viewSource() = launchExternal(SOURCE_URL)
+
+    /** Same shape as `viewSource`, but points at the AGPL-3.0 text. */
+    fun viewLicense() = launchExternal(LICENSE_URL)
+
+    private fun launchExternal(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK,
+        )
+        try {
+            appContext.startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No browser to handle $url: ${e.message}")
+        }
+    }
+
     private companion object {
         const val TAG = "SettingsViewModel"
+        const val SOURCE_URL = "https://github.com/wienerlabs/oppolink"
+        const val LICENSE_URL = "https://github.com/wienerlabs/oppolink/blob/main/LICENSE"
     }
 }

@@ -1,6 +1,7 @@
 package link.oppolink.settings
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -86,6 +87,29 @@ private fun AppInfoSection(viewModel: SettingsViewModel) {
             InfoRow("Version code", viewModel.versionCode.toString())
             InfoRow("Wire protocol", "v2 (Curve25519 + ChaCha20-Poly1305)")
             InfoRow("License", "AGPL-3.0")
+            Spacer(Modifier.height(8.dp))
+            LinkRow("View source code", "github.com/wienerlabs/oppolink", viewModel::viewSource)
+            LinkRow("Read the license", "AGPL-3.0 full text", viewModel::viewLicense)
+        }
+    }
+}
+
+@Composable
+private fun LinkRow(label: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
