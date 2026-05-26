@@ -70,10 +70,11 @@ incompatible - the version byte hard-rejects on handshake.
   Actions billing has been failing since 2026-05-23 - code-side ships
   continued but the Android assembleDebug CI job has been skipped
   since then. Locally verified at every step.
-- **MITM SAS UX confirmation**: today the SAS is rendered as six
-  emoji from a 64-glyph palette, derived from a dedicated HKDF slice.
-  An explicit "matches / doesn't match" confirmation tap that locks
-  the call into the encrypted phase is queued for v0.2.
+- **MITM SAS UX confirmation tap shipped post-D15**: the SAS card now
+  carries "Matches" and "Doesn't match" buttons; the "Start
+  full-duplex call" button stays disabled until the user taps
+  "Matches". "Doesn't match" cancels the connection and returns to
+  Discovery. Confirmation state is scoped to the current peer.
 
 ### Sprint 4 polish (post-D15)
 

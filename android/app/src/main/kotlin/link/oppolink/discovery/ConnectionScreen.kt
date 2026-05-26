@@ -49,6 +49,10 @@ fun ConnectionScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val audioLevels by viewModel.audioLevels.collectAsStateWithLifecycle()
+    // Sprint 4 polish - the user must tap "Matches" on the SAS card
+    // before "Start full-duplex call" enables. Scoped to the peer
+    // address so changing peers resets the flag.
+    var sasVerified by remember(peer.bdAddress) { mutableStateOf(false) }
 
     // Sprint 4 D12 - push-to-talk mode toggle. UI-local state; the
     // ViewModel only sees `setMuted(true|false)` calls. When PTT mode
@@ -81,6 +85,12 @@ fun ConnectionScreen(
             if (state is ConnectionState.PsmExchanged) {
                 SasEmojiCard(
                     psm = state as ConnectionState.PsmExchanged,
+                    verified = sasVerified,
+                    onMatches = { sasVerified = true },
+                    onDoesNotMatch = {
+                        viewModel.cancel()
+                        onBack()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -117,9 +127,13 @@ fun ConnectionScreen(
             Spacer(Modifier.height(8.dp))
             Footer(
                 state = state,
+                sasVerified = sasVerified,
                 onStartCall = { viewModel.startCall() },
                 onEndCall = { viewModel.cancel() },
-                onRetry = { viewModel.start(peer) },
+                onRetry = {
+                    sasVerified = false
+                    viewModel.start(peer)
+                },
                 onCancel = {
                     viewModel.cancel()
                     onBack()
@@ -373,14 +387,21 @@ private fun JitterDiagnosticsCard(stats: JitterStats?, modifier: Modifier = Modi
 @Composable
 private fun Footer(
     state: ConnectionState,
+    sasVerified: Boolean,
     onStartCall: () -> Unit,
     onEndCall: () -> Unit,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
     onBack: () -> Unit,
 ) {
+    // PsmExchanged with a non-empty SAS requires the user to confirm
+    // the emoji match before "Start full-duplex call" enables. The
+    // CallEnded path doesn't re-show the SAS card, so we gate on
+    // sasVerified || state is CallEnded.
+    val sasGateOk = sasVerified || state is ConnectionState.CallEnded
     val canStartCall =
-        state is ConnectionState.PsmExchanged || state is ConnectionState.CallEnded
+        (state is ConnectionState.PsmExchanged && sasGateOk) ||
+            state is ConnectionState.CallEnded
     val isInCall =
         state is ConnectionState.InCall || state is ConnectionState.Reconnecting
     val isFailed = state is ConnectionState.Failed
@@ -448,12 +469,28 @@ private fun emojisForSas(bytes: ByteArray): String =
 @Composable
 private fun SasEmojiCard(
     psm: ConnectionState.PsmExchanged,
+    verified: Boolean,
+    onMatches: () -> Unit,
+    onDoesNotMatch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (psm.sasEmoji.isEmpty()) return // legacy / pre-D13 path
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Verify SAS", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Verify SAS", style = MaterialTheme.typography.titleMedium)
+                if (verified) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Verified") },
+                        colors = AssistChipDefaults.assistChipColors(),
+                    )
+                }
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 "Both phones should show the same six emoji. If they don't " +
@@ -473,6 +510,13 @@ private fun SasEmojiCard(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (!verified) {
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onMatches) { Text("Matches") }
+                    OutlinedButton(onClick = onDoesNotMatch) { Text("Doesn't match") }
+                }
+            }
         }
     }
 }
